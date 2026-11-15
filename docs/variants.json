@@ -1,0 +1,32 @@
+[
+  {
+    "id": "01-natur",
+    "title": "Natur & Ruhe",
+    "description": "Warme Flächen, viel Weissraum und ein grüner Rahmen für das Projekt.",
+    "path": "variants/01-natur/",
+    "image": "assets/images/ansicht-01.jpg",
+    "theme": "nature",
+    "version": "01",
+    "changes": [
+      "Erste helle Designprobe mit grün-goldener Gestaltung.",
+      "Geteilter Einstieg mit Text und Bild; gemeinsame Projekt-Assets eingebunden."
+    ],
+    "date": "2026-11-15",
+    "sequence": 1
+  },
+  {
+    "id": "02-architektur",
+    "title": "Architektur & Klarheit",
+    "description": "Dunkle Kontraste, grosse Ansichten und ein klarer Fokus auf das Gebäude.",
+    "path": "variants/02-architektur/",
+    "image": "assets/images/ansicht-02.jpg",
+    "theme": "architecture",
+    "version": "02",
+    "changes": [
+      "Dunkle Gestaltung als Alternative zu Variante 01.",
+      "Grössere Typografie und breite Gebäudeansicht statt geteiltem Einstieg."
+    ],
+    "date": "2026-11-15",
+    "sequence": 2
+  }
+]
