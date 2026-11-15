@@ -13,6 +13,7 @@ Statische Entwurfsumgebung mit gemeinsam genutzten Assets und GitHub-Pages-Verö
 | `docs/shared/` | Gemeinsames CSS und Index-Script |
 | `assets/references/` | Referenzanalyse und Screenshots, nicht im Pages-Paket |
 | `assets/templates/` | Inhaltsvorlagen für die weitere Entwicklung |
+| `scripts/blender/` | 3D-Modell: Umgebungsdaten laden, Szene bauen, Renderings und GLB erzeugen |
 | `.github/workflows/pages.yml` | Prüft und veröffentlicht `docs/` bei Änderungen auf main |
 
 Das Repository ist öffentlich. Auch Dateien ausserhalb von `docs/` sind über GitHub sichtbar. Vertrauliche Pläne, Kontaktdaten und interne Unterlagen gehören nicht hierher. Die ursprünglichen PDF-Pläne wurden nicht übernommen.
@@ -29,6 +30,18 @@ Im Browser `http://localhost:8000` öffnen. Nicht per `file://`, weil die Auswah
 ## Assets hochladen
 
 Im GitHub-Ordner `docs/assets/images` → Add file → Upload files → Commit auf main. Die Asset-Seite enthält einen direkten Upload-Link. Alternativ per Git hinzufügen und pushen. Kurze Dateinamen ohne Leerzeichen verwenden; Webbilder vorab optimieren. Danach im HTML der gewünschten Variante referenzieren. Gemeinsame Pfade: `../../assets/images/datei.jpg` aus einer Variante. Das ist ein GitHub-Uploadprozess, kein anonymes Upload-Backend der Website.
+
+## 3D-Modell
+
+Blender 4.2 oder neuer (getestet mit 5.3). Arbeitsdaten landen in `build/3d/` (nicht versioniert), Ergebnisse in `docs/assets/images/modell-*.jpg` und `docs/assets/3d/teichwiese.glb`.
+
+```sh
+python3 scripts/blender/fetch_context.py                      # OSM, Gelände, Orthofoto laden (einmalig)
+blender -b -P scripts/blender/build_teichwiese.py -- --quick  # Vorschau nach build/3d/preview-*.jpg
+blender -b -P scripts/blender/build_teichwiese.py -- --glb    # finale Renderings und GLB
+```
+
+Weitere Optionen: `--shots b54,abend` rendert nur einzelne Kameras, `--no-render` speichert nur `build/3d/teichwiese.blend` zum Weiterbearbeiten. Grundlagen, Annahmen und Pflicht-Quellenangaben stehen in `docs/assets/README.md`.
 
 ## Neue Variante
 

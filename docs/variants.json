@@ -28,5 +28,21 @@
     ],
     "date": "2026-11-15",
     "sequence": 2
+  },
+  {
+    "id": "03-3d-modell",
+    "title": "3D-Modell im Review",
+    "description": "Interaktives 3D-Modell und Renderings der Bauteile 1–4 in der echten Umgebung, nur zur Prüfung des Modells.",
+    "path": "variants/03-3d-modell/",
+    "image": "assets/images/modell-uebersicht.jpg",
+    "theme": "model",
+    "version": "03",
+    "changes": [
+      "Blender-Modell nach Entwurf 3 mit Gelände, Orthofoto und OSM-Umgebung.",
+      "Interaktiver Viewer (GLB) und sechs Renderings inklusive Abendansicht.",
+      "Logo mit Obstbäumen und Markenfarben auf Stelen und Logotafel."
+    ],
+    "date": "2026-11-15",
+    "sequence": 3
   }
 ]

@@ -1,0 +1,13 @@
+.model-review{--green:#024c20;--gold:#c9980a;--ink:#26261e}
+.model-review .logo{width:200px;height:70px}
+.model-review .intro{padding-bottom:10px}
+.viewer{display:block;width:100%;height:min(72vh,680px);background:linear-gradient(#dfe8ef,#f5f3ed);border:1px solid var(--line);border-radius:18px}
+.viewer-progress{position:absolute;left:0;bottom:0;height:4px;width:calc(var(--progress-bar-width,0)*100%);background:var(--gold)}
+.model-review figure{margin:0}
+.model-review figure img{display:block;width:100%;border-radius:12px}
+.model-review figcaption{font-size:14px;color:#5d645c;padding:8px 2px 0}
+.model-review .wide{margin-bottom:24px}
+.shots{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.questions{padding-left:20px}
+.questions li{margin:6px 0}
+@media(max-width:700px){.shots{grid-template-columns:1fr}.viewer{height:420px}.model-review .logo{width:140px;height:50px}}

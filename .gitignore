@@ -2,3 +2,6 @@ __pycache__/
 .DS_Store
 .env
 .env.*
+
+# Lokale Arbeitsdaten des 3D-Modells (Downloads, .blend, Zwischenstände)
+build/
