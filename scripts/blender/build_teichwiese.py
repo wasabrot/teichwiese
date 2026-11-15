@@ -1471,7 +1471,7 @@ def build_site(plan, c, tree_objs):
 
     # Leuchten, Bänke, Fahrradständer
     fx = MB()
-    for pu, pv in lamps + [(-12.0, PV_WALK + 0.6), (-129.4, PV_FRONT + 1.0), (-200.0, PV_WALK + 0.6)]:
+    for pu, pv in lamps + [(-129.4, PV_FRONT + 1.0), (-200.0, PV_WALK + 0.6)]:
         z = float(zl(pu)) + 0.15
         fx.box(pu - 0.07, pu + 0.07, pv - 0.07, pv + 0.07, z, z + 6.0, 0)
         fx.box(pu - 0.15, pu + 0.15, pv - 0.9, pv + 0.15, z + 6.0, z + 6.12, 0)
@@ -1664,14 +1664,15 @@ def setup_world(mood="day"):
             break
         except TypeError:
             continue
-    el = SUN_EL if mood == "day" else -4.5
+    el = SUN_EL if mood != "dusk" else -4.5
     sky.sun_disc = False
     sky.sun_elevation = math.radians(el)
     sky.sun_rotation = math.radians(180 - SUN_AZ) % (2 * math.pi)
     sky.altitude = 400
     try:
-        sky.aerosol_density = 1.6
+        sky.aerosol_density = 0.25 if mood == "hero" else 1.6
         sky.air_density = 1.0
+        sky.ozone_density = 2.5 if mood == "hero" else 1.0
     except AttributeError:
         pass
     # Leichte Schleierwolken über Richtungsprojektion
@@ -1696,8 +1697,8 @@ def setup_world(mood="day"):
     nz.inputs["Roughness"].default_value = 0.62
     nt.links.new(vec.outputs[0], nz.inputs["Vector"])
     ramp = nt.nodes.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].position = 0.5
-    ramp.color_ramp.elements[1].position = 0.78
+    ramp.color_ramp.elements[0].position = 0.56 if mood == "hero" else 0.5
+    ramp.color_ramp.elements[1].position = 0.74 if mood == "hero" else 0.78
     nt.links.new(nz.outputs["Fac"], ramp.inputs[0])
     hz = nt.nodes.new("ShaderNodeMapRange")
     hz.inputs["From Min"].default_value = 0.0
@@ -1709,23 +1710,23 @@ def setup_world(mood="day"):
     nt.links.new(hz.outputs[0], fac.inputs[1])
     fac2 = nt.nodes.new("ShaderNodeMath")
     fac2.operation = "MULTIPLY"
-    fac2.inputs[1].default_value = 0.75 if mood == "day" else 0.35
+    fac2.inputs[1].default_value = {"day": 0.75, "hero": 0.95}.get(mood, 0.35)
     nt.links.new(fac.outputs[0], fac2.inputs[0])
     mix = nt.nodes.new("ShaderNodeMix")
     mix.data_type = "RGBA"
     nt.links.new(fac2.outputs[0], mix.inputs[0])
     nt.links.new(sky.outputs[0], mix.inputs[6])
-    mix.inputs[7].default_value = (1.0, 1.0, 1.0, 1) if mood == "day" else (0.25, 0.2, 0.28, 1)
+    mix.inputs[7].default_value = (1.0, 1.0, 1.0, 1) if mood != "dusk" else (0.25, 0.2, 0.28, 1)
     cloud_bright = nt.nodes.new("ShaderNodeMix")
     cloud_bright.data_type = "RGBA"
     cloud_bright.blend_type = "MULTIPLY"
     cloud_bright.inputs[0].default_value = 1.0
     nt.links.new(sky.outputs[0], cloud_bright.inputs[6])
     cloud_bright.inputs[7].default_value = (3.0, 3.0, 3.0, 1)
-    if mood == "day":
+    if mood != "dusk":
         nt.links.new(cloud_bright.outputs[2], mix.inputs[7])
     nt.links.new(mix.outputs[2], bg.inputs["Color"])
-    bg.inputs["Strength"].default_value = 0.32 if mood == "day" else 2.2
+    bg.inputs["Strength"].default_value = {"day": 0.32, "hero": 0.36}.get(mood, 2.2)
     nt.links.new(bg.outputs[0], out.inputs[0])
 
     sun = bpy.data.objects.get("Sonne")
@@ -1735,14 +1736,14 @@ def setup_world(mood="day"):
     az, elr = math.radians(SUN_AZ), math.radians(SUN_EL)
     d = Vector((math.sin(az) * math.cos(elr), math.cos(az) * math.cos(elr), math.sin(elr)))
     sun.rotation_euler = d.to_track_quat("Z", "Y").to_euler()
-    sun.data.energy = 4.2 if mood == "day" else 0.0
+    sun.data.energy = 0.0 if mood == "dusk" else 4.2
     sun.data.angle = math.radians(0.6)
     sun.data.color = (1.0, 0.96, 0.9)
     for node, day, dusk in EMISSIVE:
-        node.inputs["Emission Strength"].default_value = day if mood == "day" else dusk
+        node.inputs["Emission Strength"].default_value = dusk if mood == "dusk" else day
     for ob in DUSK_LIGHTS:
-        ob.hide_render = mood == "day"
-        ob.hide_viewport = mood == "day"
+        ob.hide_render = mood != "dusk"
+        ob.hide_viewport = mood != "dusk"
 
 
 def look_at(ob, target):
@@ -1778,6 +1779,8 @@ SHOT_DEFS = {
     "einfahrt-nord": (P3(55, -32, 30), P3(-95, 30, -2), 30, 2400, 1350, "day"),
     "eingang": (P3(-36, 10.2, 2.2), P3(-47.0, 18.0, 4.6), 24, 1800, 1350, "day"),
     "abend": (P3(-12, -13, 8.0), P3(-56, 20, 4.2), 30, 2400, 1350, "dusk"),
+    # Hero: Ecke Bauteil 1 mit Logotafel von der Nordeinfahrt, viel Himmel für die Headline
+    "hero": (P3(-3, 0.5, 3.0), P3(-42, 20, 15.0), 22, 2560, 1440, "hero"),
 }
 
 
@@ -1822,7 +1825,7 @@ def render_shots():
         if SHOTS and name not in SHOTS:
             continue
         setup_world(mood)
-        sc.view_settings.exposure = -0.55 if mood == "day" else 1.1
+        sc.view_settings.exposure = 1.1 if mood == "dusk" else -0.55
         sc.camera = cam
         sc.render.resolution_x = w // (3 if QUICK else 1)
         sc.render.resolution_y = h // (3 if QUICK else 1)

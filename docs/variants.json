@@ -44,5 +44,21 @@
     ],
     "date": "2026-11-15",
     "sequence": 3
+  },
+  {
+    "id": "04-buehne-3d",
+    "title": "Große Bühne mit 3D-Modell",
+    "description": "Nach dem Vorbild Business Village Styria: randloses 3D-Rendering mit Headline im Himmel, Badge zum 3D-Modell und klare Abschnitte bis zur Anfrage.",
+    "path": "variants/04-buehne-3d/",
+    "image": "assets/images/modell-hero.jpg",
+    "theme": "stage",
+    "version": "04",
+    "changes": [
+      "Neue Hero-Ansicht aus dem 3D-Modell: Ecke Bauteil 1 mit Logotafel, viel Himmel für die Headline.",
+      "Logo zentriert zwischen zwei Navigationsgruppen, runder Badge „Zum 3D-Modell“, Serif-Headlines.",
+      "Grüner Faktenblock, Räume, Merkmale, eingebetteter 3D-Viewer, Galerie, Projektstand, offene FAQ und Kontakt."
+    ],
+    "date": "2026-11-15",
+    "sequence": 4
   }
 ]
