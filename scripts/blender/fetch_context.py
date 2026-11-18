@@ -28,11 +28,14 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "build" / "3d"
 CACHE = OUT / "tiles"
 
-# Mitte der Gewerbefläche nördlich von BILLA, westlich der B54 (OSM way 854510837)
+# Bei der B54 nördlich von BILLA. Das Projektgrundstück liegt ÖSTLICH der B54 (ca. 25 m östlich,
+# 170 m südlich bis 90 m nördlich dieses Punkts); Lage im Planrahmen von build_teichwiese.py
 ORIGIN = (47.17882, 15.80987)
 EXTENT = 900.0  # Halbe Kantenlänge des Umgebungsquadrats in Metern
 INNER = 320.0  # Halbe Kantenlänge des hochaufgelösten Orthofotos
 FAR = 7000.0  # Fernumfeld (Hügelland, Kulm) für Übersichtsansichten
+OVERPASS = ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+            "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]
 UA = "teichwiese-3d-model/1.0 (+https://github.com/wasabrot/teichwiese)"
 
 M_PER_DEG_LAT = 110540.0
@@ -115,15 +118,31 @@ def fetch_osm() -> None:
     sel = ["way[building]", "relation[building]", "way[highway]", "way[landuse]", "way[natural]",
            "node[natural=tree]", "way[waterway]", "way[amenity=parking]", "way[leisure]",
            "way[barrier=hedge]"]
-    body = "".join(s.replace("[", f"(around:{r},{lat},{lon})[", 1) + ";" for s in sel)
-    q = f"[out:json][timeout:120];({body});out geom tags;"
-    data = urllib.parse.urlencode({"data": q}).encode()
-    req = urllib.request.Request("https://overpass-api.de/api/interpreter", data=data,
-                                 headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=180) as resp:
-        raw = json.load(resp)
+    dlat, dlon = r / M_PER_DEG_LAT, r / M_PER_DEG_LON
+    bbox = f"{lat - dlat:.6f},{lon - dlon:.6f},{lat + dlat:.6f},{lon + dlon:.6f}"
+    elements: dict[str, dict] = {}
+    # Eine kleine Abfrage je Objektart: öffentliche Server lehnen große Abfragen oft mit 502/504 ab
+    for s in sel:
+        q = f"[out:json][timeout:90][bbox:{bbox}];{s};out geom tags;"
+        data = urllib.parse.urlencode({"data": q}).encode()
+        raw = None
+        for attempt in range(8):
+            url = OVERPASS[attempt % len(OVERPASS)]
+            try:
+                req = urllib.request.Request(url, data=data, headers={"User-Agent": UA})
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    raw = json.load(resp)
+                break
+            except OSError as e:  # 429/502/504: anderen Server versuchen
+                print(f"Overpass {url}: {e}", file=sys.stderr)
+                time.sleep(4 * (attempt + 1))
+        if raw is None:
+            raise SystemExit(f"Overpass nicht erreichbar ({s})")
+        for e in raw["elements"]:
+            elements[f"{e['type']}/{e['id']}"] = e
+        print(f"OSM {s}: {len(raw['elements'])}")
     feats = []
-    for e in raw["elements"]:
+    for e in elements.values():
         if e["type"] == "node":
             pts = [(e["lon"], e["lat"])]
         elif "geometry" in e:

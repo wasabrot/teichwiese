@@ -15,6 +15,9 @@ Grundlage der Gebäude: Plan "22-029_002 Entwurf GR SN", Entwurf 3 vom 25.10.202
 Bauteil 2 ist spiegelgleich zu Bauteil 1; für Bauteil 3 und 4 liegen keine
 Grundrisse vor, sie werden mit demselben Gebäudetyp angenommen. Gestaltung
 (Fassaden, Holzlamellen, PV, Bepflanzung) folgt den vorhandenen Renderings.
+Lage und Zufahrt: verkehrstechnische Stellungnahme ZT Fruhmann vom 14.12.2023 ("TW Einfahrt"):
+Grundstück östlich der LB54, nördlich an Gst. 105 gegenüber Billa; eine Zufahrt als vierter
+Knotenarm gegenüber der geplanten Aufschließung West.
 Das Ergebnis ist eine Visualisierung, kein Nachweis von Ausstattung oder Bauzustand.
 """
 from __future__ import annotations
@@ -50,10 +53,13 @@ META = json.loads((DATA / "meta.json").read_text())
 EXT, INNER, FAR = META["extent"], META["inner"], META["far"]
 Z0 = 366.0  # m ü. A. → Blender z = 0
 
-# Planrahmen: pu entlang der B54 (Richtung NNO), pv von der B54 weg (Richtung WNW).
-# Ursprung = Nordostecke des Grundstücks an der B54 (Übersicht M 1:1000).
-PLAN_ROT = math.radians(79.3)
-PLAN_T = (45.0, 123.0)
+# Planrahmen = Übersicht M 1:1000 so wie gezeichnet: B54 unten, Grundstück darüber, rechts Gst. 105.
+# Das Grundstück liegt ÖSTLICH der B54 (Gst. 110 ff., Verkehrsgutachten Fruhmann 12/2023).
+# pu entlang der B54, positiv Richtung SSW (Ortszentrum/Billa); pv von der B54 weg Richtung OSO.
+# Ursprung = Südwestecke an der B54 (Grenze zu Gst. 105, gegenüber der Nordkante Billa).
+# Bauteil 1+2 liegen damit im Süden (Ortsseite), Bauteil 3 und 4 im Norden.
+PLAN_ROT = math.radians(79.13 + 180.0)  # B54-Achse laut OSM: 79.13° (NNO) → pu zeigt nach SSW
+PLAN_T = (0.9, -169.1)  # 6 m östlich der Straßenachse, Passpunkte GIS-Luftbild ↔ Orthofoto
 PX_PER_M = 5.673  # Übersicht M 1:1000, gerastert
 
 
@@ -67,8 +73,9 @@ SITE = np.array([plan_px(u, v) for u, v in [
     (1553, 163), (1655, 195), (1600, 525), (1480, 521), (850, 521), (593, 529), (533, 524),
     (311, 539), (133, 545)]])
 
-# Höhen: Bauteile 1+2 auf Ebene A, Bauteile 3+4 auf Ebene B, Rampe in der Lücke dazwischen
-LEVEL_A, LEVEL_B = 0.5, -1.3
+# Höhen (relativ zu Z0, aus DGM am Standort): Bauteile 1+2 im Süden auf Ebene A (Urgelände ca. -1,3),
+# Bauteile 3+4 im Norden auf Ebene B (Urgelände ca. -0,4), Rampe in der Lücke dazwischen
+LEVEL_A, LEVEL_B = -1.0, -0.2
 RAMP = (-140.0, -118.0)
 RAMP_CUTS = [RAMP[0] + i * 2.0 for i in range(12)]
 
@@ -94,6 +101,11 @@ def world_to_plan(x, y):
 PV_GREEN, PV_PARK, PV_AISLE, PV_WALK, PV_FRONT = 0.0, 2.0, 7.0, 13.5, 19.57
 PV_BACK, PV_YARD = 44.57, 51.0
 FRONT_PU = (-251.0, -14.0)
+# Einzige Zufahrt: 4. Knotenarm gegenüber der geplanten Aufschließung West (nördlich Billa),
+# danach Nebenfahrbahn parallel zur B54 (Verkehrsgutachten Fruhmann 12/2023). Lage aus dem
+# Übersichtslageplan abgegriffen (ca. 17 m nördlich der Grenze zu Gst. 105), nicht vermessen.
+ACCESS_PU = (-21.0, -13.0)
+PARK_END = ACCESS_PU[0] - 6.5  # Stellplätze enden vor der Ausrundung
 
 # --------------------------------------------------------------------------------------
 # Hilfsfunktionen
@@ -1396,16 +1408,15 @@ def build_site(plan, c, tree_objs):
     S = []
     S.append(plate("Rasen_Grundstueck", [tuple(p) for p in SITE], 0.0, M("grass"), plan, c))
     u_s, u_n = FRONT_PU
-    S.append(plate("Parken_Rasengitter", rect(u_s, u_n, PV_PARK, PV_AISLE), 0.03, M("grasspavers"), plan, c))
+    S.append(plate("Parken_Rasengitter", rect(u_s, PARK_END, PV_PARK, PV_AISLE), 0.03, M("grasspavers"), plan, c))
     aisle = rect(u_s - 7.0, u_n + 2.0, PV_AISLE, PV_WALK)
     S.append(plate("Fahrgasse", aisle, 0.04, M("asphalt"), plan, c))
-    S.append(plate("Zufahrt_Nord", fillet_access(-12.5, -4.5, -2.4, PV_AISLE + 0.5), 0.045, M("asphalt"), plan, c))
-    S.append(plate("Zufahrt_Sued", fillet_access(-258.0, -251.0, -2.4, PV_AISLE + 0.5), 0.045, M("asphalt"),
+    S.append(plate("Zufahrt_Sued", fillet_access(*ACCESS_PU, -2.4, PV_AISLE + 0.5, r=9.0), 0.045, M("asphalt"),
                    plan, c))
     S.append(plate("Gehweg", rect(u_s, u_n - 4.0, PV_WALK, PV_FRONT + 0.4), 0.0, M("pavers"), plan, c,
                    height=0.14, side_mat=M("kerb")))
     S.append(plate("Hof_hinten", rect(u_s, u_n - 4.0, PV_BACK, PV_YARD), 0.04, M("asphalt"), plan, c))
-    S.append(plate("Umfahrt_Nord", rect(-19.5, -12.5, PV_WALK, PV_YARD), 0.042, M("asphalt"), plan, c))
+    S.append(plate("Umfahrt_Sued", rect(-19.5, -12.5, PV_WALK, PV_YARD), 0.042, M("asphalt"), plan, c))
     S.append(plate("Durchfahrt_BT3_BT4", rect(-201.5, -194.0, PV_WALK, PV_YARD), 0.042, M("asphalt"), plan, c))
     # Platz zwischen Bauteil 2 und 3 (Treffpunkt, Vorschlag)
     S.append(plate("Platz", rect(-137.4, -121.3, PV_FRONT, PV_BACK), 0.0, M("pavers_plaza"), plan, c,
@@ -1419,7 +1430,7 @@ def build_site(plan, c, tree_objs):
     stall = 2.5
     u = u_s + 0.5
     k = 0
-    while u + stall <= u_n:
+    while u + stall <= PARK_END:
         if k % 6 == 5:
             S.append(plate(f"Baumscheibe_{k}", rect(u + 0.1, u + stall - 0.1, PV_PARK + 0.1, PV_AISLE - 0.3), 0.0,
                            M("grass_dark"), plan, c, height=0.15, side_mat=M("kerb")))
@@ -1436,7 +1447,7 @@ def build_site(plan, c, tree_objs):
     # Baumreihe im Grünstreifen an der B54 und Bäume hinten an der Grundstücksgrenze
     u = u_s + 4.0
     while u < u_n:
-        if -244.0 < u < -19.0:
+        if -244.0 < u < PARK_END - 1.0:
             trees.append(("strasse", u + random.uniform(-0.6, 0.6), 1.0 + random.uniform(-0.2, 0.2)))
         u += 12.5
     for pu in np.arange(-252, -12, 9.5):
@@ -1544,7 +1555,7 @@ def build_pylon(name, plan, c, pu, pv, rot):
 
 
 def build_logo_panel(name, parent, c, x, y, z, w, out_dir):
-    """Logotafel auf der Fassade (Stirnseite Bauteil 1 Richtung Norden)."""
+    """Logotafel auf der Fassade (Stirnseite Bauteil 1 Richtung Süden, zum Ort)."""
     mb = MB()
     h = w / 2.993
     pad = 0.35
@@ -1625,7 +1636,7 @@ def build_cars(plan, c, src_coll):
     rng = random.Random(3)
     u = FRONT_PU[0] + 0.5
     k = 0
-    while u + 2.5 <= FRONT_PU[1]:
+    while u + 2.5 <= PARK_END:
         if k % 6 != 5 and rng.random() < (0.55 if u > -130 else 0.35):
             src = rng.choice(cars)
             ob = bpy.data.objects.new(f"Auto_{k:03d}", src.data)
@@ -1645,7 +1656,7 @@ def build_cars(plan, c, src_coll):
 # --------------------------------------------------------------------------------------
 # Licht, Kameras, Rendern
 # --------------------------------------------------------------------------------------
-SUN_AZ, SUN_EL = 140.0, 38.0  # Spätsommer, Vormittag; Ostfassaden im Licht
+SUN_AZ, SUN_EL = 232.0, 36.0  # Spätsommer, Nachmittag; Schaufront zur B54 (WNW) im Licht
 
 
 def setup_world(mood="day"):
@@ -1772,15 +1783,19 @@ def P3(pu, pv, z):
 
 SHOT_DEFS = {
     # Name: (Kamera, Ziel, Brennweite, Breite, Höhe, Stimmung)
-    # Blick nach NW: Gewerbepark im Vordergrund, Kulm am Horizont
-    "uebersicht": (P3(-325, -202, 105), P3(-135, 30, 57), 30, 2400, 1350, "day"),
-    "panorama": (P3(-325, -202, 60), P3(-135, 30, 39), 35, 2400, 1000, "day"),
+    # Blick von SW über Billa nach NNO: Bauteil 1+2 vorne beim Ort, B54 links, Bauteil 3+4 dahinter
+    "uebersicht": (P3(190, -150, 120), P3(-125, 35, 0), 30, 2400, 1350, "day"),
+    # Von Westen über das Feld (Gst. 107) auf die Schaufronten aller Bauteile an der B54
+    "panorama": (P3(-122, -195, 62), P3(-125, 30, 0), 28, 2400, 1000, "day"),
     "b54": (P3(-12, -13, 8.0), P3(-56, 20, 4.2), 30, 2400, 1350, "day"),
-    "einfahrt-nord": (P3(55, -32, 30), P3(-95, 30, -2), 30, 2400, 1350, "day"),
+    # Von Billa über die Zufahrt (Knoten B54) nach NO auf Bauteil 1 mit Logotafel
+    "einfahrt-sued": (P3(55, -32, 30), P3(-95, 30, -2), 30, 2400, 1350, "day"),
     "eingang": (P3(-36, 10.2, 2.2), P3(-47.0, 18.0, 4.6), 24, 1800, 1350, "day"),
     "abend": (P3(-12, -13, 8.0), P3(-56, 20, 4.2), 30, 2400, 1350, "dusk"),
-    # Hero: Ecke Bauteil 1 mit Logotafel von der Nordeinfahrt, viel Himmel für die Headline
+    # Hero: Ecke Bauteil 1 mit Logotafel von der Südeinfahrt, viel Himmel für die Headline
     "hero": (P3(-3, 0.5, 3.0), P3(-42, 20, 15.0), 22, 2560, 1440, "hero"),
+    # Lagekontrolle: senkrecht von oben, Norden oben (Gebäude östlich = rechts der B54)
+    "draufsicht": ((24.0, -46.0, 620.0), (24.0, -40.0, 0.0), 50, 1600, 1600, "day"),
 }
 
 
@@ -1788,14 +1803,20 @@ def setup_render():
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
     prefs = bpy.context.preferences.addons["cycles"].preferences
-    try:
-        prefs.compute_device_type = "METAL"
-        prefs.get_devices()
-        for d in prefs.devices:
-            d.use = True
-        sc.cycles.device = "GPU"
-    except Exception as exc:  # noqa: BLE001
-        print("GPU nicht verfügbar:", exc)
+    for kind in ("METAL", "OPTIX", "CUDA", "HIP"):
+        try:
+            prefs.compute_device_type = kind
+            prefs.get_devices()
+            devs = [d for d in prefs.devices if d.type == kind]
+            if not devs:
+                continue
+            for d in prefs.devices:
+                d.use = d.type == kind
+            sc.cycles.device = "GPU"
+            print("GPU:", kind, [d.name for d in devs])
+            break
+        except Exception as exc:  # noqa: BLE001
+            print("GPU", kind, "nicht verfügbar:", exc)
     sc.cycles.samples = 24 if QUICK else 320
     sc.cycles.adaptive_threshold = 0.05 if QUICK else 0.015
     sc.cycles.use_denoising = True
@@ -2006,10 +2027,9 @@ def main():
                   collection=c_site)
     build_site(plan, c_site, tree_objs)
     build_cars(plan, c_site, c_src)
-    build_pylon("Stele_Nord", plan, c_site, -28.2, 1.0, 0.0)
-    build_pylon("Stele_Sued", plan, c_site, -242.5, 1.0, 0.0)
+    build_pylon("Stele_Sued", plan, c_site, -30.5, 1.0, 0.0)  # nördlich neben der Zufahrt
     bt1 = bpy.data.objects["Bauteil_1"]
-    build_logo_panel("Logo_Nord", bt1, c_site, L_OG + 0.02, 8.1, 7.0, 6.0, 0.0)
+    build_logo_panel("Logo_Sued", bt1, c_site, L_OG + 0.02, 8.1, 7.0, 6.0, 0.0)
 
     # Vorlagen nicht direkt rendern (nur als Instanzen)
     lc = bpy.context.view_layer.layer_collection.children["Vorlagen"]
