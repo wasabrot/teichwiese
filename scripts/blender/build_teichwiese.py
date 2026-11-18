@@ -2027,7 +2027,7 @@ def main():
                   collection=c_site)
     build_site(plan, c_site, tree_objs)
     build_cars(plan, c_site, c_src)
-    build_pylon("Stele_Sued", plan, c_site, -30.5, 1.0, 0.0)  # nördlich neben der Zufahrt
+    build_pylon("Stele_Sued", plan, c_site, -30.5, 1.0, math.pi / 2)  # nördlich neben der Zufahrt, quer zur B54
     bt1 = bpy.data.objects["Bauteil_1"]
     build_logo_panel("Logo_Sued", bt1, c_site, L_OG + 0.02, 8.1, 7.0, 6.0, 0.0)
 
