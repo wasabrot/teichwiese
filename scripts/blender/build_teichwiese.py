@@ -9,6 +9,7 @@ Optionen:
   --shots a,b        nur diese Kameras rendern (Standard: alle)
   --no-render        nur Szene bauen und speichern
   --glb              zusätzlich docs/assets/3d/teichwiese.glb exportieren
+  --tag v5           Ausgabe als modell-<name>-v5.jpg / teichwiese-v5.glb (neue Variante, alte bleiben)
 
 Grundlage der Gebäude: Plan "22-029_002 Entwurf GR SN", Entwurf 3 vom 25.10.2025
 (IGW Baumanagement): Grundrisse EG/OG, Systemschnitt, Übersicht M 1:1000.
@@ -36,7 +37,7 @@ from mathutils import Matrix, Vector, noise
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "build" / "3d"
 IMG_OUT = ROOT / "docs" / "assets" / "images"
-GLB_OUT = ROOT / "docs" / "assets" / "3d" / "teichwiese.glb"
+GLB_OUT = ROOT / "docs" / "assets" / "3d" / "teichwiese.glb"  # mit --tag: teichwiese<TAG>.glb
 LOGO = ROOT / "docs" / "assets" / "brand" / "teichwiese-obstbaeume.png"
 FONT = ROOT / "docs" / "assets" / "fonts" / "NunitoSans-ExtraBold.ttf"
 
@@ -45,6 +46,9 @@ QUICK = "--quick" in argv
 NO_RENDER = "--no-render" in argv
 DO_GLB = "--glb" in argv
 SHOTS = None
+TAG = ""  # --tag v5 → modell-<name>-v5.jpg / teichwiese-v5.glb, ältere Varianten bleiben unverändert
+if "--tag" in argv:
+    TAG = "-" + argv[argv.index("--tag") + 1]
 if "--shots" in argv:
     SHOTS = argv[argv.index("--shots") + 1].split(",")
 
@@ -624,9 +628,14 @@ def build_materials():
     mat_simple("wood_bench", srgb("#9b6a3d"), 0.6)
     mat_simple("tyre", srgb("#151515"), 0.8)
     mat_simple("car_glass", srgb("#0c1014"), 0.05, 0.0, Specular_IOR_Level=0.8)
-    for i, c in enumerate(["#e9e9e7", "#b9bcbf", "#5d6164", "#1d1f22", "#22324f", "#7b1d1a", "#e9e9e7",
-                           "#94989b"]):
-        mat_simple(f"car_{i}", srgb(c), 0.25, 0.5, Coat_Weight=1.0, Coat_Roughness=0.03)
+    # Zeitgemäße Lackfarben: Perlweiß, Silber, Graphit, Schwarz, Tiefblau, Rot, Zementgrau, Dunkelgrün,
+    # Petrolblau, Sandbeige, Bronze, Hellblau
+    for i, c in enumerate(["#eceeee", "#b6babd", "#4b5054", "#141618", "#1d3266", "#a3161a", "#8c9091",
+                           "#25402f", "#1f5361", "#c8b89a", "#7a5a3c", "#6f93b4"]):
+        mat_simple(f"car_{i}", srgb(c), 0.22, 0.55, Coat_Weight=1.0, Coat_Roughness=0.02)
+    mat_simple("car_rim", srgb("#9aa0a6"), 0.3, 0.9)
+    mat_simple("car_trim", srgb("#17181a"), 0.55, 0.1)
+    mat_emissive("car_led", srgb("#f4f7ff"), srgb("#e8ecf2"), 0.8, 6.0, 0.2)
 
     # Logo (transparentes PNG) auf weißer Tafel
     logo = img(LOGO)
@@ -1567,56 +1576,120 @@ def build_logo_panel(name, parent, c, x, y, z, w, out_dir):
     return root
 
 
-def make_car(name, c, paint, van=False):
+# Moderne Fahrzeugtypen: Länge, Breite, Bodenfreiheit, Radradius, Gürtellinie hinten/vorn,
+# Dachhöhe, Haubenhöhe an der Front, Fensterfläche (Anteil von hinten → vorn), Dachende hinten
+CAR_TYPES = {
+    "suv": dict(L=4.62, W=1.88, zb=0.40, r=0.37, belt=(1.08, 0.98), roof=1.68, nose=0.80, gh=(0.07, 0.62), rr=0.05),
+    "kompakt": dict(L=4.15, W=1.80, zb=0.33, r=0.33, belt=(1.00, 0.90), roof=1.47, nose=0.70, gh=(0.08, 0.63), rr=0.06),
+    "limousine": dict(L=4.85, W=1.86, zb=0.32, r=0.34, belt=(0.98, 0.88), roof=1.44, nose=0.68, gh=(0.20, 0.62), rr=0.0),
+    "kombi": dict(L=4.75, W=1.84, zb=0.33, r=0.34, belt=(1.00, 0.90), roof=1.50, nose=0.69, gh=(0.05, 0.63), rr=0.03),
+    "transporter": dict(L=5.30, W=2.02, zb=0.36, r=0.36, belt=(1.20, 1.15), roof=2.30, nose=1.00, gh=(0.03, 0.80),
+                        rr=0.02),
+}
+
+
+def make_car(name, c, paint, kind="suv", roof_black=False):
+    """Zeitgemäßer Pkw/Transporter als geglätteter Loft: Karosserie, Glashaus, große Räder, LED-Leisten."""
+    T = CAR_TYPES[kind]
+    L, W = T["L"], T["W"]
     bm = bmesh.new()
-    mats = [paint, M("car_glass"), M("tyre"), M("coping"), M("coping"), M("brake_light")]
+    mats = [paint, M("car_glass"), M("tyre"), M("car_rim"), M("car_led"), M("brake_light"), M("car_trim"),
+            M("car_trim") if roof_black else paint]
+    NS, NR = 34, 28  # Stationen entlang x, Punkte je Querschnitt
 
-    def block(x0, x1, y0, y1, z0, z1, mat, bevel, taper=(1.0, 1.0, 0.0)):
-        res = bmesh.ops.create_cube(bm, size=1.0)
-        vs = res["verts"]
-        for v in vs:
-            top = v.co.z > 0
-            x = x1 if v.co.x > 0 else x0
-            y = y1 if v.co.y > 0 else y0
-            if top:
-                cx = (x0 + x1) / 2 + taper[2]
-                x = cx + (x - (x0 + x1) / 2) * taper[0]
-                y = y * taper[1]
-            v.co = Vector((x, y, z1 if top else z0))
-        faces = list({f for v in vs for f in v.link_faces})
-        for f in faces:
-            f.material_index = mat
-        edges = list({e for v in vs for e in v.link_edges})
-        bmesh.ops.bevel(bm, geom=edges, offset=bevel, segments=3, affect="EDGES", profile=0.5,
-                        clamp_overlap=True, material=mat)
+    def loft(fx, zb, zt, wb, wt, p, mat_fn):
+        """fx: Stationen (Meter); zb/zt/wb/wt: Funktionen von x; p: Superellipsen-Exponent."""
+        rings = []
+        for x in fx:
+            ring = []
+            for j in range(NR):
+                a = 2 * math.pi * j / NR
+                cs, sn = math.cos(a), math.sin(a)
+                yy = math.copysign(abs(cs) ** (2 / p), cs)
+                uu = math.copysign(abs(sn) ** (2 / p), sn)
+                t = (uu + 1) / 2
+                w = wb(x) + (wt(x) - wb(x)) * t
+                z = zb(x) + (zt(x) - zb(x)) * t
+                ring.append(bm.verts.new((x, yy * w / 2, z)))
+            rings.append(ring)
+        for i in range(len(rings) - 1):
+            for j in range(NR):
+                q = (rings[i][j], rings[i][(j + 1) % NR], rings[i + 1][(j + 1) % NR], rings[i + 1][j])
+                f = bm.faces.new(q)
+                f.material_index = mat_fn(f)
+        for ring, rev in ((rings[0], True), (rings[-1], False)):
+            ctr = bm.verts.new(sum((v.co for v in ring), Vector()) / NR)
+            for j in range(NR):
+                tri = (ring[j], ring[(j + 1) % NR], ctr)
+                f = bm.faces.new(tri[::-1] if rev else tri)
+                f.material_index = mat_fn(f)
 
-    L, W = (5.2, 2.0) if van else (4.45, 1.8)
-    block(-L / 2, L / 2, -W / 2, W / 2, 0.28, 0.9 if not van else 1.1, 0, 0.16)
+    def smooth_interp(_xs, ks, vs):
+        return lambda x: float(np.interp(x, ks, vs))
+
+    x0, x1 = -L / 2, L / 2
+    fr = lambda f: x0 + f * L  # noqa: E731
+    van = kind == "transporter"
+    # Unterbau: Seitenlinie mit abgerundeten Enden, Haube fällt zur Front ab
+    ks = [fr(0), fr(0.025), fr(0.08), fr(0.70), fr(0.86), fr(0.975), fr(1)]
+    bt, bf = T["belt"]
+    top = smooth_interp(None, ks, [bt - 0.22, bt - 0.04, bt, bf + 0.02, bf - 0.04, T["nose"], T["nose"] - 0.12])
+    bot = smooth_interp(None, ks, [T["zb"] + 0.18, T["zb"] + 0.06, T["zb"], T["zb"], T["zb"], T["zb"] + 0.05,
+                                  T["zb"] + 0.16])
+    wid = smooth_interp(None, ks, [W * 0.82, W * 0.96, W, W, W * 0.99, W * 0.94, W * 0.80])
+    xs = [x0 + (x1 - x0) * (0.5 - 0.5 * math.cos(math.pi * i / (NS - 1))) for i in range(NS)]
+
+    def body_mat(f):
+        cz = f.calc_center_median().z
+        return 6 if cz < T["zb"] + 0.14 else 0  # dunkle Schwellerverkleidung unten
+
+    loft(xs, bot, top, wid, lambda x: wid(x) * 0.96, 3.2, body_mat)
+
+    # Glashaus: von der Gürtellinie bis zum Dach, schmaler (Tumblehome), Dach in Wagen- oder Kontrastfarbe
+    g0, g1 = fr(T["gh"][0]), fr(T["gh"][1])
+    roof = T["roof"]
     if van:
-        block(-L / 2 + 0.9, L / 2 - 0.05, -W / 2 + 0.02, W / 2 - 0.02, 1.1, 2.3, 0, 0.12, (0.97, 0.98, 0.0))
-        block(L / 2 - 0.95, L / 2 - 0.02, -W / 2 + 0.06, W / 2 - 0.06, 1.15, 1.85, 1, 0.05)
+        rk = [g0, g0 + 0.15, g1 - 0.35, g1]
+        rv = [roof - 0.15, roof, roof, top(g1) + 0.02]
     else:
-        block(-L / 2 + 0.95, L / 2 - 1.25, -W / 2 + 0.08, W / 2 - 0.08, 0.86, 1.44, 1, 0.1, (0.66, 0.86, -0.12))
-        block(-L / 2 + 1.25, L / 2 - 1.62, -W / 2 + 0.22, W / 2 - 0.22, 1.41, 1.46, 0, 0.03)
-    for sx in (-1, 1):
+        rk = [g0, fr(T["gh"][0] + 0.07 + T["rr"]), fr(0.30), fr(0.50), g1]
+        rv = [top(g0) + 0.02, roof - 0.04, roof, roof - 0.01, top(g1) + 0.02]
+    gtop = smooth_interp(None, rk, rv)
+    gbot = lambda x: top(x) - 0.04  # noqa: E731
+    gx = [g0 + (g1 - g0) * i / (NS - 1) for i in range(NS)]
+
+    def glass_mat(f):
+        cz = f.calc_center_median().z
+        x = f.calc_center_median().x
+        return 7 if cz > gtop(x) - (0.07 if not van else 0.12) else 1
+
+    loft(gx, gbot, gtop, lambda x: wid(x) * 0.92, lambda x: wid(x) * (0.74 if not van else 0.88), 4.0, glass_mat)
+
+    # Räder mit Felgen und dunklen Radläufen
+    r = T["r"]
+    for sx, fx_ in ((-1, fr(0.19 if not van else 0.17)), (1, fr(0.80 if not van else 0.83))):
         for sy in (-1, 1):
-            m = Matrix.Translation((sx * (L / 2 - 0.82), sy * (W / 2 - 0.1), 0.34)) @ Matrix.Rotation(math.pi / 2, 4, "X")
-            res = bmesh.ops.create_cone(bm, cap_ends=True, segments=16, radius1=0.34, radius2=0.34, depth=0.24,
-                                        matrix=m)
+            m = Matrix.Translation((fx_, sy * (W / 2 - 0.13), r)) @ Matrix.Rotation(math.pi / 2, 4, "X")
+            res = bmesh.ops.create_cone(bm, cap_ends=True, segments=24, radius1=r, radius2=r, depth=0.26, matrix=m)
             for f in {f for v in res["verts"] for f in v.link_faces}:
                 f.material_index = 2
-            m2 = Matrix.Translation((sx * (L / 2 - 0.82), sy * (W / 2 + 0.03), 0.34)) @ Matrix.Rotation(
-                math.pi / 2, 4, "X")
-            res = bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=0.2, radius2=0.2, depth=0.02,
-                                        matrix=m2)
+            m2 = Matrix.Translation((fx_, sy * (W / 2 + 0.002), r)) @ Matrix.Rotation(math.pi / 2, 4, "X")
+            res = bmesh.ops.create_cone(bm, cap_ends=True, segments=20, radius1=r * 0.66, radius2=r * 0.62,
+                                        depth=0.02, matrix=m2)
             for f in {f for v in res["verts"] for f in v.link_faces}:
                 f.material_index = 3
-    for sy in (-1, 1):
-        for x, mat in ((L / 2 + 0.005, 4), (-L / 2 - 0.005, 5)):
-            res = bmesh.ops.create_cube(bm, size=1.0, matrix=Matrix.Translation((x, sy * (W / 2 - 0.3), 0.74))
-                                        @ Matrix.Diagonal((0.04, 0.32, 0.09, 1)))
+            # Radlauf: dunkler Halbring knapp außerhalb der Karosserie
+            res = bmesh.ops.create_circle(bm, cap_ends=True, segments=20, radius=r + 0.035,
+                                          matrix=Matrix.Translation((fx_, sy * (W / 2 + 0.001), r))
+                                          @ Matrix.Rotation(math.pi / 2, 4, "X"))
             for f in {f for v in res["verts"] for f in v.link_faces}:
-                f.material_index = mat
+                f.material_index = 6
+    # LED-Leisten: vorn weiß, hinten durchgehend rot
+    zf, zr = T["nose"] - 0.02, bt - 0.12
+    for x, z, mat, w in ((x1 - 0.03, zf, 4, W * 0.70), (x0 + 0.02, zr, 5, W * 0.76)):
+        res = bmesh.ops.create_cube(bm, size=1.0, matrix=Matrix.Translation((x, 0, z)) @ Matrix.Diagonal((0.05, w, 0.05, 1)))
+        for f in {f for v in res["verts"] for f in v.link_faces}:
+            f.material_index = mat
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
@@ -1624,21 +1697,30 @@ def make_car(name, c, paint, van=False):
         me.materials.append(m)
     me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
     if hasattr(me, "set_sharp_from_angle"):
-        me.set_sharp_from_angle(angle=math.radians(35))
+        me.set_sharp_from_angle(angle=math.radians(40))
     ob = bpy.data.objects.new(name, me)
     c.objects.link(ob)
     return ob
 
 
+# Index in der Fahrzeugliste: Rot, Weiß, Tiefblau, Petrol, Schwarz, Bronze, Dunkelgrün, Silber, Hellblau, Sand
+FRONT_CARS = [5, 0, 4, 8, 3, 10, 7, 1, 11, 9, 6, 2]
+
+
 def build_cars(plan, c, src_coll):
-    cars = [make_car(f"PKW_{i}", src_coll, M(f"car_{i}")) for i in range(8)]
-    van = make_car("Transporter", src_coll, M("car_0"), van=True)
+    kinds = ["suv", "kompakt", "kombi", "suv", "limousine", "kompakt"]
+    cars = [make_car(f"PKW_{i}", src_coll, M(f"car_{i % 12}"), kinds[i % len(kinds)], roof_black=i % 5 == 2)
+            for i in range(18)]
+    van = make_car("Transporter", src_coll, M("car_0"), "transporter")
     rng = random.Random(3)
     u = FRONT_PU[0] + 0.5
     k = 0
     while u + 2.5 <= PARK_END:
-        if k % 6 != 5 and rng.random() < (0.55 if u > -130 else 0.35):
-            src = rng.choice(cars)
+        # vorderste Stellplätze (im Blick der Hero-/Zufahrtsansicht) fest belegt, gut unterscheidbare Farben
+        j = int((PARK_END - u) / 2.5)
+        front = j < 12
+        if k % 6 != 5 and (front or rng.random() < (0.55 if u > -130 else 0.35)):
+            src = cars[FRONT_CARS[j % len(FRONT_CARS)]] if front else rng.choice(cars)
             ob = bpy.data.objects.new(f"Auto_{k:03d}", src.data)
             c.objects.link(ob)
             ob.parent = plan
@@ -1646,7 +1728,14 @@ def build_cars(plan, c, src_coll):
             ob.rotation_euler = (0, 0, math.pi / 2 + (math.pi if rng.random() < 0.3 else 0) + rng.uniform(-0.03, 0.03))
         u += 2.5
         k += 1
-    for i, (pu, pv) in enumerate(((-58.0, 47.8), (-163.0, 47.8))):
+    # Fahrende Autos im Vordergrund der Hero-Ansicht: einer biegt von der B54 ein, einer fährt auf der Fahrgasse
+    for i, (idx, pu, pv, rot) in enumerate(((5, -37.0, 10.4, math.pi), (2, -50.0, 9.4, 0.0))):
+        ob = bpy.data.objects.new(f"Auto_fahrend_{i}", cars[idx].data)
+        c.objects.link(ob)
+        ob.parent = plan
+        ob.location = (pu, pv, float(zl(pu)) + 0.05)
+        ob.rotation_euler = (0, 0, rot)
+    for i, (pu, pv) in enumerate(((-33.0, 47.6), (-163.0, 47.8))):
         ob = bpy.data.objects.new(f"Transporter_{i}", van.data)
         c.objects.link(ob)
         ob.parent = plan
@@ -1794,6 +1883,8 @@ SHOT_DEFS = {
     "abend": (P3(-12, -13, 8.0), P3(-56, 20, 4.2), 30, 2400, 1350, "dusk"),
     # Hero: Ecke Bauteil 1 mit Logotafel von der Südeinfahrt, viel Himmel für die Headline
     "hero": (P3(-3, 0.5, 3.0), P3(-42, 20, 15.0), 22, 2560, 1440, "hero"),
+    # Hof hinter Bauteil 1: Lagertore an der Rückseite
+    "lager": (P3(-19.0, 49.5, 1.9), P3(-52.0, 45.2, 2.6), 24, 1800, 1350, "day"),
     # Lagekontrolle: senkrecht von oben, Norden oben (Gebäude östlich = rechts der B54)
     "draufsicht": ((24.0, -46.0, 620.0), (24.0, -40.0, 0.0), 50, 1600, 1600, "day"),
 }
@@ -1850,7 +1941,7 @@ def render_shots():
         sc.camera = cam
         sc.render.resolution_x = w // (3 if QUICK else 1)
         sc.render.resolution_y = h // (3 if QUICK else 1)
-        out = IMG_OUT / f"modell-{name}.jpg" if not QUICK else DATA / f"preview-{name}.jpg"
+        out = IMG_OUT / f"modell-{name}{TAG}.jpg" if not QUICK else DATA / f"preview-{name}{TAG}.jpg"
         sc.render.filepath = str(out)
         print("Rendere", name, "→", out)
         bpy.ops.render.render(write_still=True)
@@ -1975,8 +2066,9 @@ def export_glb(plan, site_coll, tree_objs):
     cp = bpy.data.objects.new("Web_Umgebung", me)
     web.objects.link(cp)
     cp.select_set(True)
-    GLB_OUT.parent.mkdir(parents=True, exist_ok=True)
-    kw = dict(filepath=str(GLB_OUT), export_format="GLB", use_selection=True, export_apply=True,
+    glb = GLB_OUT.with_name(f"teichwiese{TAG}.glb")
+    glb.parent.mkdir(parents=True, exist_ok=True)
+    kw = dict(filepath=str(glb), export_format="GLB", use_selection=True, export_apply=True,
               export_yup=True, export_draco_mesh_compression_enable=True,
               export_draco_mesh_compression_level=7, export_image_format="JPEG", export_jpeg_quality=80)
     try:
@@ -1984,7 +2076,7 @@ def export_glb(plan, site_coll, tree_objs):
     except TypeError:
         kw.pop("export_jpeg_quality")
         bpy.ops.export_scene.gltf(**kw)
-    print("GLB:", GLB_OUT, GLB_OUT.stat().st_size // 1024, "KB")
+    print("GLB:", glb, glb.stat().st_size // 1024, "KB")
     for o in list(web.objects):
         bpy.data.objects.remove(o)
     bpy.data.collections.remove(web)

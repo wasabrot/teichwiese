@@ -60,5 +60,24 @@
     ],
     "date": "2026-11-15",
     "sequence": 4
+  },
+  {
+    "id": "05-sichtbar",
+    "title": "Sichtbarkeit und Raum",
+    "description": "Weiterentwicklung von Variante 04 nach Rückmeldung: Sichtbarkeit an der B54, Lager und Großgaragen, frühe Mitsprache und Kurzanfrage mit vorgefertigten Sätzen.",
+    "path": "variants/05-sichtbar/",
+    "image": "assets/images/modell-hero-v5.jpg",
+    "theme": "stage",
+    "version": "05",
+    "changes": [
+      "Logo im Kopf etwa dreimal so groß; Headline „Sichtbarkeit und Raum für Ihr Unternehmen.“",
+      "Sichtbarer Standort: Nähe zur stark befahrenen B54 (≈ 9.200 Kfz/Tag, JDTV 2019) für Kunden und künftige Mitarbeiter.",
+      "Lagerflächen und Großgaragen, auch zusätzlich anmietbar; variable Aufteilung; Hinweis auf frühe Mitsprache bei Raumgröße.",
+      "Kompetenzzentrum Bauen & Wohnen, offener Büro- und Dienstleistungsmix, regionale Betriebe gemeinsam sichtbar.",
+      "Kurzanfrage: antippbare Sätze, nur Telefon oder E-Mail nötig (Versand nach Freigabe).",
+      "Neue Renderings mit modernen Autos in verschiedenen Farben und Ansicht der Lagertore."
+    ],
+    "date": "2026-11-18",
+    "sequence": 5
   }
 ]
