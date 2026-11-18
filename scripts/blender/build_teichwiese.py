@@ -641,13 +641,6 @@ def build_materials():
     t.link(bp.outputs["Normal"], bsdf.inputs["Normal"])
     t.link(bsdf.outputs[0], t.out.inputs[0])
     mat_simple("grass_tuft", srgb("#8a9a48"), 0.8)
-    m, t = material("water", srgb("#2f4a52"))
-    bsdf = t.bsdf(srgb("#24404a"), 0.04, 0.0)
-    nz = t.n("ShaderNodeTexNoise", i_Scale=9.0, i_Detail=4.0)
-    bp = t.n("ShaderNodeBump", i_Strength=0.15, i_Distance=0.02)
-    t.link(nz.outputs["Fac"], bp.inputs["Height"])
-    t.link(bp.outputs["Normal"], bsdf.inputs["Normal"])
-    t.link(bsdf.outputs[0], t.out.inputs[0])
     mat_simple("leaf_vine", srgb("#2e5a22"), 0.6, bump=0.5, bump_scale=40)
     mat_simple("akebia_bloom", srgb("#7a3a6e"), 0.5)
     mat_simple("steel_cable", srgb("#b8bcc0"), 0.25, 0.95)
@@ -1742,34 +1735,7 @@ def build_knoten(c, feats):
     mk.build("Knoten_B54_Markierung", [M("marking")], collection=c)
 
 
-# Retentionsbecken im Südosten (Plan 22-029_001). Ausführung offen oder unterirdisch ist noch nicht geklärt;
-# dargestellt als naturnahes, offenes Becken mit Wasserfläche, Schilf und Steinrand.
-BASIN_C, BASIN_R = (-3.5, 47.0), (7.0, 11.5)
-
-
-def build_retention(plan, c, rnd):
-    mb = MB()
-    z = float(zl(BASIN_C[0])) + 0.03
-    n = 40
-    ring = []
-    for i in range(n):
-        a = 2 * math.pi * i / n
-        r = 1 + 0.08 * math.sin(3 * a + 0.7) + 0.05 * math.cos(5 * a)
-        ring.append((BASIN_C[0] + BASIN_R[0] * r * math.cos(a), BASIN_C[1] + BASIN_R[1] * r * math.sin(a)))
-    # Steinrand (Ring) und Wasserfläche
-    inner = [(BASIN_C[0] + (x - BASIN_C[0]) * 0.86, BASIN_C[1] + (y - BASIN_C[1]) * 0.9) for x, y in ring]
-    for i in range(n):
-        a0, a1, b1, b0 = ring[i], ring[(i + 1) % n], inner[(i + 1) % n], inner[i]
-        mb.oriented([(*a0, z), (*a1, z), (*b1, z), (*b0, z)], 0, (0, 0, 1))
-    mb.oriented([(x, y, z + 0.01) for x, y in inner], 1, (0, 0, 1))
-    # Schilf und Uferstauden
-    for i in range(n):
-        if rnd.random() < 0.7:
-            x, y = inner[i]
-            x = BASIN_C[0] + (x - BASIN_C[0]) * rnd.uniform(0.9, 1.04)
-            y = BASIN_C[1] + (y - BASIN_C[1]) * rnd.uniform(0.9, 1.04)
-            mb_blob(mb, (x, y, z + 0.45), rnd.uniform(0.35, 0.6), 2, rnd, squash=(0.7, 0.7, 1.6))
-    mb.build("Retentionsbecken", [M("gravel"), M("water"), M("leaf_obst")], parent=plan, collection=c)
+# Retentionsbecken im Südosten (Plan 22-029_001) wird unterirdisch ausgeführt: an der Oberfläche Rasen.
 
 
 # Garagen (Gebäude 1G / 6,0 m laut Plan 22-029_001): hinter Bauteil 1+2, 8 m Zufahrt, 8 m Tiefe
@@ -1935,7 +1901,7 @@ def build_site(plan, c, tree_objs):
             trees.append(("laub" if random.random() < 0.55 else "strasse", pu + random.uniform(-1, 1), b - 3.2))
     for du, dv in ((-131.5, 27.0), (-127.0, 31.5), (-131.5, 36.5), (-127.0, 22.0)):
         trees.append(("obst", du, dv))
-    for du, dv in ((-6.0, 20.0), (-232.0, 32.0)):
+    for du, dv in ((-6.0, 20.0), (-2.0, 30.0), (-8.0, 40.0), (-232.0, 32.0)):
         trees.append(("obst", du, dv))
 
     tcoll = c
@@ -2596,7 +2562,6 @@ def main():
         build_bauteil_gruen(nm, root, c_site, kw.get("end0", False), tufts, seed=200 + i)
     build_garagen(plan, c_site, tufts)
     build_knoten(c_site, feats)
-    build_retention(plan, c_site, random.Random(77))
     build_site(plan, c_site, tree_objs)
     build_cars(plan, c_site, c_src)
     build_pylon("Stele_Sued", plan, c_site, -30.5, 1.0, math.pi / 2)  # nördlich neben der Zufahrt, quer zur B54
