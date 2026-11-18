@@ -641,6 +641,13 @@ def build_materials():
     t.link(bp.outputs["Normal"], bsdf.inputs["Normal"])
     t.link(bsdf.outputs[0], t.out.inputs[0])
     mat_simple("grass_tuft", srgb("#8a9a48"), 0.8)
+    m, t = material("water", srgb("#2f4a52"))
+    bsdf = t.bsdf(srgb("#24404a"), 0.04, 0.0)
+    nz = t.n("ShaderNodeTexNoise", i_Scale=9.0, i_Detail=4.0)
+    bp = t.n("ShaderNodeBump", i_Strength=0.15, i_Distance=0.02)
+    t.link(nz.outputs["Fac"], bp.inputs["Height"])
+    t.link(bp.outputs["Normal"], bsdf.inputs["Normal"])
+    t.link(bsdf.outputs[0], t.out.inputs[0])
     mat_simple("leaf_vine", srgb("#2e5a22"), 0.6, bump=0.5, bump_scale=40)
     mat_simple("akebia_bloom", srgb("#7a3a6e"), 0.5)
     mat_simple("steel_cable", srgb("#b8bcc0"), 0.25, 0.95)
@@ -918,10 +925,8 @@ def build_roads(c, feats):
             ribbon(mk, P, 0.075, 0.18, 0, offset=-(w / 2 - 0.35))
     # Geplanter Westarm des Knotens gegenüber der Zufahrt (Lageplan 22-029_001, rot skizziert):
     # Zufahrt Billa nach Süden in den Parkplatz, künftige Aufschließungsstraße nach Westen/Norden
+    # (Mesh entsteht in build_knoten() in der Projekt-Sammlung, damit es auch im Web-GLB erscheint)
     for P, w in west_access_lines():
-        ribbon(mb, P, w / 2, 0.13, 1)
-        ribbon(mk, P, 0.06, 0.15, 0, offset=w / 2 - 0.3)
-        ribbon(mk, P, 0.06, 0.15, 0, offset=-(w / 2 - 0.3))
         lines.append((P, w))
     mb.build("Strassen", [M("asphalt"), M("asphalt_road")], collection=c)
     mk.build("Strassen_Markierung", [M("marking")], collection=c)
@@ -1623,6 +1628,150 @@ def build_bauteil_gruen(name, root, collection, end0, tuft_coll, seed):
                  [(x_og0 + 0.4, L_OG - 0.4, Y_OG0 + 0.4, Y_OG1 - 0.4)], Z_ROOF, seed=seed)
 
 
+# --------------------------------------------------------------------------------------
+# Knoten B54: Linksabbiegestreifen beidseitig, Westarm (Billa, Aufschließung West)
+# --------------------------------------------------------------------------------------
+TURN_STORE, TURN_DECEL, TURN_SHIFT, TURN_W = 20.0, 30.0, 65.0, 3.25  # Gutachten Fruhmann 2023, Verziehung 1:20
+
+
+def b54_plan_line(feats):
+    """B54-Mittellinie (OSM) im Planrahmen als nach pu sortierte Punkte."""
+    pts = []
+    for f in feats:
+        if f["tags"].get("highway") == "primary":
+            P = np.array(f["xy"], float)
+            u, v = world_to_plan(P[:, 0], P[:, 1])
+            pts += list(zip(u, v))
+    pts = np.array(sorted(pts))
+    return pts
+
+
+def build_knoten(c, feats):
+    """Verbreiterte B54 am Knoten mit Linksabbiegestreifen (beidseitig) und geplanter Westarm.
+    Liegt in der Projekt-Sammlung, damit er auch im Web-Modell (GLB) erscheint."""
+    uj = (ACCESS_PU[0] + ACCESS_PU[1]) / 2
+    line = b54_plan_line(feats)
+    cv = lambda u: float(np.interp(u, line[:, 0], line[:, 1]))  # noqa: E731
+
+    def mid_w(u):
+        """Breite des Mittelstreifens (Linksabbieger) an der Stelle u."""
+        d = abs(u - uj)
+        full = TURN_STORE + TURN_DECEL
+        if d <= TURN_STORE:
+            return TURN_W
+        if d <= full:
+            t = (d - TURN_STORE) / TURN_DECEL
+            return TURN_W * (1 - t * t * (3 - 2 * t))
+        return 0.0
+
+    def road_w(u):
+        d = abs(u - uj)
+        full = TURN_STORE + TURN_DECEL
+        if d <= full:
+            return 7.5 + TURN_W
+        if d <= full + TURN_SHIFT:
+            t = (d - full) / TURN_SHIFT
+            return 7.5 + TURN_W * (1 - t)
+        return 7.5
+
+    mb, mk = MB(), MB()
+    span = TURN_STORE + TURN_DECEL + TURN_SHIFT
+    us = np.arange(uj - span, uj + span + 0.01, 1.0)
+
+    def strip(off_fn, half, z, mat, target, dash=None, when=lambda u: True):
+        for a, b in zip(us[:-1], us[1:]):
+            if not when((a + b) / 2):
+                continue
+            if dash and ((a - us[0]) % sum(dash)) > dash[0]:
+                continue
+            q = []
+            for u, side in ((a, -1), (b, -1), (b, 1), (a, 1)):
+                v = cv(u) + off_fn(u) + side * half
+                x, y = plan_to_world(u, v)
+                q.append((x, y, float(ground(x, y)) + z))
+            target.face(q, mat)
+
+    # Fahrbahn
+    for a, b in zip(us[:-1], us[1:]):
+        q = []
+        for u, side in ((a, -1), (b, -1), (b, 1), (a, 1)):
+            v = cv(u) + side * road_w(u) / 2
+            x, y = plan_to_world(u, v)
+            q.append((x, y, float(ground(x, y)) + 0.19))
+        mb.face(q, 0, uv=[(0, a), (0, b), (1, b), (1, a)])
+    # Randlinien
+    for sgn in (-1, 1):
+        strip(lambda u, s_=sgn: s_ * (road_w(u) / 2 - 0.35), 0.075, 0.205, 0, mk)
+    # Mittelstreifen: Linien beidseits des Linksabbiegers; außerhalb gestrichelte Leitlinie
+    inside = lambda u: mid_w(u) > 0.05  # noqa: E731
+    strip(lambda u: 0.0, 0.06, 0.205, 0, mk, dash=(4.5, 9.0), when=lambda u: not inside(u))
+    for sgn in (-1, 1):
+        # durchgezogen zur Gegenrichtung, gestrichelt zum eigenen Fahrstreifen in der Verzögerungsstrecke
+        def side_line(u, s_=sgn):
+            return s_ * mid_w(u) / 2
+        # nördlich (u < uj): Linksabbieger für Verkehr aus Norden (fährt +pu, rechts = −pv) → Sperrlinie auf +pv;
+        # südlich (u > uj): Linksabbieger Richtung Billa für Verkehr aus Süden → Sperrlinie auf −pv
+        solid_side = 1
+        strip(side_line, 0.075, 0.205, 0, mk,
+              when=lambda u, s_=sgn: inside(u) and ((u < uj and s_ == solid_side) or (u > uj and s_ == -solid_side)))
+        strip(side_line, 0.075, 0.205, 0, mk, dash=(3.0, 3.0),
+              when=lambda u, s_=sgn: inside(u) and ((u < uj and s_ != solid_side) or (u > uj and s_ == solid_side))
+              and abs(u - uj) > 1.0)
+    # Pfeile im Aufstellbereich (einfache Dreiecke + Schaft)
+    for u_dir, off in ((-1, 0.0), (1, 0.0)):
+        for k in (6.0, 14.0):
+            u0 = uj + u_dir * (k + 2.0)
+            heading = -u_dir  # Fahrtrichtung zum Knoten hin
+            v0 = cv(u0) + off
+            pts = [(u0 - heading * 1.6, v0 - 0.09), (u0 + heading * 0.4, v0 - 0.09), (u0 + heading * 0.4, v0 + 0.09),
+                   (u0 - heading * 1.6, v0 + 0.09)]
+            tri = [(u0 + heading * 0.4, v0 - 0.45), (u0 + heading * 1.4, v0 + heading * 0.0 + (0.6 if u_dir < 0 else -0.6)),
+                   (u0 + heading * 0.4, v0 + 0.45)]
+            for poly in (pts, tri):
+                q = []
+                for u, v in poly:
+                    x, y = plan_to_world(u, v)
+                    q.append((x, y, float(ground(x, y)) + 0.21))
+                mk.oriented(q, 0, (0, 0, 1))
+    # Westarm (Planskizze)
+    for P, w in west_access_lines():
+        ribbon(mb, P, w / 2, 0.17, 1)
+        ribbon(mk, P, 0.06, 0.185, 0, offset=w / 2 - 0.3)
+        ribbon(mk, P, 0.06, 0.185, 0, offset=-(w / 2 - 0.3))
+    mb.build("Knoten_B54_Fahrbahn", [M("asphalt_road"), M("asphalt")], collection=c)
+    mk.build("Knoten_B54_Markierung", [M("marking")], collection=c)
+
+
+# Retentionsbecken im Südosten (Plan 22-029_001). Ausführung offen oder unterirdisch ist noch nicht geklärt;
+# dargestellt als naturnahes, offenes Becken mit Wasserfläche, Schilf und Steinrand.
+BASIN_C, BASIN_R = (-3.5, 47.0), (7.0, 11.5)
+
+
+def build_retention(plan, c, rnd):
+    mb = MB()
+    z = float(zl(BASIN_C[0])) + 0.03
+    n = 40
+    ring = []
+    for i in range(n):
+        a = 2 * math.pi * i / n
+        r = 1 + 0.08 * math.sin(3 * a + 0.7) + 0.05 * math.cos(5 * a)
+        ring.append((BASIN_C[0] + BASIN_R[0] * r * math.cos(a), BASIN_C[1] + BASIN_R[1] * r * math.sin(a)))
+    # Steinrand (Ring) und Wasserfläche
+    inner = [(BASIN_C[0] + (x - BASIN_C[0]) * 0.86, BASIN_C[1] + (y - BASIN_C[1]) * 0.9) for x, y in ring]
+    for i in range(n):
+        a0, a1, b1, b0 = ring[i], ring[(i + 1) % n], inner[(i + 1) % n], inner[i]
+        mb.oriented([(*a0, z), (*a1, z), (*b1, z), (*b0, z)], 0, (0, 0, 1))
+    mb.oriented([(x, y, z + 0.01) for x, y in inner], 1, (0, 0, 1))
+    # Schilf und Uferstauden
+    for i in range(n):
+        if rnd.random() < 0.7:
+            x, y = inner[i]
+            x = BASIN_C[0] + (x - BASIN_C[0]) * rnd.uniform(0.9, 1.04)
+            y = BASIN_C[1] + (y - BASIN_C[1]) * rnd.uniform(0.9, 1.04)
+            mb_blob(mb, (x, y, z + 0.45), rnd.uniform(0.35, 0.6), 2, rnd, squash=(0.7, 0.7, 1.6))
+    mb.build("Retentionsbecken", [M("gravel"), M("water"), M("leaf_obst")], parent=plan, collection=c)
+
+
 # Garagen (Gebäude 1G / 6,0 m laut Plan 22-029_001): hinter Bauteil 1+2, 8 m Zufahrt, 8 m Tiefe
 GAR_PU = (-108.6, -22.9)
 GAR_ANNEX = (-118.9, -108.6)
@@ -1786,7 +1935,7 @@ def build_site(plan, c, tree_objs):
             trees.append(("laub" if random.random() < 0.55 else "strasse", pu + random.uniform(-1, 1), b - 3.2))
     for du, dv in ((-131.5, 27.0), (-127.0, 31.5), (-131.5, 36.5), (-127.0, 22.0)):
         trees.append(("obst", du, dv))
-    for du, dv in ((-6.0, 20.0), (-2.0, 30.0), (-8.0, 40.0), (-232.0, 32.0)):
+    for du, dv in ((-6.0, 20.0), (-232.0, 32.0)):
         trees.append(("obst", du, dv))
 
     tcoll = c
@@ -2446,6 +2595,8 @@ def main():
         root, _ = build_bauteil(nm, plan, loc, collection=c_site, **kw)
         build_bauteil_gruen(nm, root, c_site, kw.get("end0", False), tufts, seed=200 + i)
     build_garagen(plan, c_site, tufts)
+    build_knoten(c_site, feats)
+    build_retention(plan, c_site, random.Random(77))
     build_site(plan, c_site, tree_objs)
     build_cars(plan, c_site, c_src)
     build_pylon("Stele_Sued", plan, c_site, -30.5, 1.0, math.pi / 2)  # nördlich neben der Zufahrt, quer zur B54
