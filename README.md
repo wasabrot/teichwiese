@@ -16,6 +16,9 @@ Statische Entwurfsumgebung mit gemeinsam genutzten Assets und GitHub-Pages-Verö
 | `scripts/blender/` | 3D-Modell: Umgebungsdaten laden, Szene bauen, Renderings und GLB erzeugen |
 | `.github/workflows/pages.yml` | Prüft und veröffentlicht `docs/` bei Änderungen auf main |
 
+Unter plans sind Artefakte des Architekten, diese sind nicht öffentlich. 
+Blender - Launch: flatpak run org.blender.Blender
+
 Das Repository ist öffentlich. Auch Dateien ausserhalb von `docs/` sind über GitHub sichtbar. Vertrauliche Pläne, Kontaktdaten und interne Unterlagen gehören nicht hierher. Die ursprünglichen PDF-Pläne wurden nicht übernommen.
 
 ## Lokal ansehen

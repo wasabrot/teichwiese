@@ -5,3 +5,4 @@ __pycache__/
 
 # Lokale Arbeitsdaten des 3D-Modells (Downloads, .blend, Zwischenstände)
 build/
+plans/
