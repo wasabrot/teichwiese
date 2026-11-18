@@ -10,6 +10,8 @@ Optionen:
   --no-render        nur Szene bauen und speichern
   --glb              zusätzlich docs/assets/3d/teichwiese.glb exportieren
   --tag v5           Ausgabe als modell-<name>-v5.jpg / teichwiese-v5.glb (neue Variante, alte bleiben)
+  --schmaeh          drei Spaßfiguren auf der Terrasse von Bauteil 1 (nur interne Renderings,
+                     z. B. --schmaeh --tag v6-schmaeh --shots terrasse-nah; Bild nicht in docs/ ablegen)
 
 Grundlage der Gebäude: Plan "22-029_002 Entwurf GR SN", Entwurf 3 vom 25.10.2025
 (IGW Baumanagement): Grundrisse EG/OG, Systemschnitt, Übersicht M 1:1000.
@@ -46,6 +48,7 @@ QUICK = "--quick" in argv
 NO_RENDER = "--no-render" in argv
 DO_GLB = "--glb" in argv
 SHOTS = None
+SCHMAEH = "--schmaeh" in argv  # Spaßfiguren auf der Terrasse (nur für interne Gaudi-Renderings)
 TAG = ""  # --tag v5 → modell-<name>-v5.jpg / teichwiese-v5.glb, ältere Varianten bleiben unverändert
 if "--tag" in argv:
     TAG = "-" + argv[argv.index("--tag") + 1]
@@ -647,6 +650,11 @@ def build_materials():
     mat_simple("planter", srgb("#3a3d40"), 0.6, 0.3)
     mat_simple("parasol", srgb("#f1ede4"), 0.8)
     mat_simple("skin", srgb("#d2a386"), 0.6)
+    mat_simple("skin_tan", srgb("#b97a52"), 0.45)
+    mat_simple("puppet_wood", srgb("#c79a5e"), 0.55, bump=0.3, bump_scale=25)
+    mat_simple("armor_black", srgb("#141414"), 0.35, 0.8)
+    mat_simple("hat_red", srgb("#c0262b"), 0.6)
+    mat_emissive("ember", srgb("#ff6a1a"), srgb("#5a1a08"), 3.0, 8.0, 0.4)
     for i, c in enumerate(["#2b4a73", "#c9980a", "#8b2b2b", "#e8e4dc", "#3d5c3a", "#56595c", "#6b4b8a", "#d97a3a"]):
         mat_simple(f"cloth_{i}", srgb(c), 0.8)
     mat_simple("apple", srgb("#b8371f"), 0.45)
@@ -1738,6 +1746,66 @@ def build_knoten(c, feats):
 # Retentionsbecken im Südosten (Plan 22-029_001) wird unterirdisch ausgeführt: an der Oberfläche Rasen.
 
 
+def build_schmaeh(root, collection):
+    """Drei Spaßfiguren auf der Terrasse von Bauteil 1: Bodybuilder, dunkler Herrscher, Holzpuppe."""
+    mats = ["skin_tan", "armor_black", "puppet_wood", "hat_red", "ember", "cloth_0", "anthracite", "cloth_5"]
+    K = {n: i for i, n in enumerate(mats)}
+    mb = MB()
+    z = Z_OGF + 0.08
+    y = D_EG - 2.2
+    rnd = random.Random(5)
+    # 1) Bodybuilder in Doppelbizeps-Pose, Blick zur Kamera (−x/+y)
+    x = 13.0
+    mb.box(x - 0.2, x - 0.04, y - 0.12, y + 0.12, z, z + 0.9, K["skin_tan"])
+    mb.box(x + 0.04, x + 0.2, y - 0.12, y + 0.12, z, z + 0.9, K["skin_tan"])
+    mb.box(x - 0.24, x + 0.24, y - 0.15, y + 0.15, z + 0.75, z + 1.0, K["cloth_0"])       # Shorts
+    mb.box(x - 0.22, x + 0.22, y - 0.16, y + 0.16, z + 1.0, z + 1.25, K["skin_tan"])      # Taille
+    mb.box(x - 0.36, x + 0.36, y - 0.2, y + 0.2, z + 1.25, z + 1.72, K["skin_tan"])       # breite Brust
+    for sx in (-1, 1):
+        mb.box(x + sx * 0.36, x + sx * 0.78, y - 0.1, y + 0.1, z + 1.55, z + 1.72, K["skin_tan"])    # Oberarm
+        mb_blob(mb, (x + sx * 0.58, y, z + 1.76), 0.12, K["skin_tan"], rnd, jitter=0.05)          # Bizeps
+        mb.box(x + sx * 0.7, x + sx * 0.84, y - 0.08, y + 0.08, z + 1.72, z + 2.08, K["skin_tan"])   # Unterarm
+        mb_blob(mb, (x + sx * 0.77, y, z + 2.12), 0.08, K["skin_tan"], rnd, jitter=0.03)          # Faust
+    mb.box(x - 0.07, x + 0.07, y - 0.07, y + 0.07, z + 1.72, z + 1.82, K["skin_tan"])
+    mb_blob(mb, (x, y, z + 1.94), 0.13, K["skin_tan"], rnd, squash=(1.0, 1.0, 1.1), jitter=0.02)
+    mb.box(x - 0.12, x + 0.12, y + 0.1, y + 0.15, z + 1.95, z + 2.0, K["anthracite"])       # Sonnenbrille
+    # 2) Dunkler Herrscher: 2,6 m, Rüstung, Stachelkrone, glühende Augenschlitze, Streitkolben
+    x = 9.0
+    mb.box(x - 0.28, x + 0.28, y - 0.2, y + 0.2, z, z + 1.3, K["armor_black"])
+    mb.box(x - 0.45, x + 0.45, y - 0.26, y + 0.26, z + 1.3, z + 2.15, K["armor_black"])
+    for sx in (-1, 1):
+        mb.box(x + sx * 0.45, x + sx * 0.62, y - 0.12, y + 0.12, z + 1.2, z + 2.1, K["armor_black"])
+        mb_blob(mb, (x + sx * 0.55, y, z + 2.15), 0.2, K["armor_black"], rnd, squash=(1.2, 1, 0.7), jitter=0.0)
+    mb.box(x - 0.17, x + 0.17, y - 0.17, y + 0.17, z + 2.15, z + 2.5, K["armor_black"])
+    mb.box(x - 0.11, x + 0.11, y + 0.17, y + 0.18, z + 2.33, z + 2.36, K["ember"])
+    for i in range(7):
+        a = i / 7 * 2 * math.pi
+        cx, cy = x + math.cos(a) * 0.15, y + math.sin(a) * 0.15
+        w = 0.05
+        mb.face([(cx - w * math.sin(a), cy + w * math.cos(a), z + 2.5), (cx + w * math.sin(a), cy - w * math.cos(a), z + 2.5),
+                 (cx + math.cos(a) * 0.05, cy + math.sin(a) * 0.05, z + 2.85)], K["armor_black"], uv=[(0, 0), (1, 0), (.5, 1)])
+    mb.box(x + 0.6, x + 0.66, y - 0.03, y + 0.03, z + 0.2, z + 1.7, K["armor_black"])
+    mb_blob(mb, (x + 0.63, y, z + 1.75), 0.14, K["armor_black"], rnd, jitter=0.4)
+    # 3) Holzpuppe mit langer Nase und Zipfelmütze
+    x = 16.5
+    for sx in (-1, 1):
+        mb.box(x + sx * 0.1 - 0.05, x + sx * 0.1 + 0.05, y - 0.05, y + 0.05, z, z + 0.55, K["puppet_wood"])
+        mb.box(x + sx * 0.3 - 0.04, x + sx * 0.3 + 0.04, y - 0.04, y + 0.04, z + 0.55, z + 0.95, K["puppet_wood"])
+    mb.box(x - 0.18, x + 0.18, y - 0.1, y + 0.1, z + 0.5, z + 0.68, K["hat_red"])            # Hose
+    mb.box(x - 0.17, x + 0.17, y - 0.1, y + 0.1, z + 0.68, z + 1.0, K["cloth_5"])            # Jacke
+    mb_blob(mb, (x, y, z + 1.14), 0.12, K["puppet_wood"], rnd, jitter=0.02)
+    tri = [(x - 0.025, y + 0.1, z + 1.12), (x + 0.025, y + 0.1, z + 1.12), (x, y + 0.1, z + 1.17)]
+    tip = (x, y + 0.62, z + 1.15)  # lange Nase, Richtung Kamera/Wald
+    for (a0, a1) in ((0, 1), (1, 2), (2, 0)):
+        mb.face([tri[a0], tri[a1], tip], K["puppet_wood"], uv=[(0, 0), (1, 0), (.5, 1)])
+    for i in range(8):
+        a, b = i / 8 * 2 * math.pi, (i + 1) / 8 * 2 * math.pi
+        mb.face([(x + math.cos(a) * 0.13, y + math.sin(a) * 0.13, z + 1.2),
+                 (x + math.cos(b) * 0.13, y + math.sin(b) * 0.13, z + 1.2), (x + 0.08, y + 0.12, z + 1.62)],
+                K["hat_red"], uv=[(0, 0), (1, 0), (.5, 1)])
+    return mb.build("Terrasse_Gaudi", [M(n) for n in mats], parent=root, collection=collection)
+
+
 # Garagen (Gebäude 1G / 6,0 m laut Plan 22-029_001): hinter Bauteil 1+2, 8 m Zufahrt, 8 m Tiefe
 GAR_PU = (-108.6, -22.9)
 GAR_ANNEX = (-118.9, -108.6)
@@ -2323,6 +2391,8 @@ SHOT_DEFS = {
     "lager": (P3(-19.0, 49.5, 1.9), P3(-52.0, 45.2, 2.6), 24, 1800, 1350, "day"),
     # Dachterrasse hinten (Richtung Wald) von der Garagenzufahrt aus, leicht erhöht
     "terrasse": (P3(-36.0, 51.0, 9.5), P3(-60.0, 40.0, 5.6), 24, 2000, 1250, "day"),
+    # Nahaufnahme der Terrasse von Bauteil 1 (für die Gaudi-Figuren)
+    "terrasse-nah": (P3(-49.5, 46.0, 6.6), P3(-58.5, 42.0, 5.6), 30, 2000, 1250, "day"),
     # Gründach mit PV und Sedum, flacher Blick über Bauteil 1+2
     "dach": (P3(-12.0, 4.0, 24.0), P3(-62.0, 32.0, 8.5), 28, 2000, 1250, "day"),
     # Lagekontrolle: senkrecht von oben, Norden oben (Gebäude östlich = rechts der B54)
@@ -2560,6 +2630,8 @@ def main():
                                        ("Bauteil_4", (-254.7, 15.7, ffb_b), {"end0": True, "rot": math.radians(3.03)}))):
         root, _ = build_bauteil(nm, plan, loc, collection=c_site, **kw)
         build_bauteil_gruen(nm, root, c_site, kw.get("end0", False), tufts, seed=200 + i)
+        if SCHMAEH and nm == "Bauteil_1":
+            build_schmaeh(root, c_site)
     build_garagen(plan, c_site, tufts)
     build_knoten(c_site, feats)
     build_site(plan, c_site, tree_objs)
