@@ -1,4 +1,6 @@
 // Kurzanfrage mit vorgefertigten Sätzen.
+// Entscheid 18.11.2026: Zustellung per E-Mail über ein eigenes Backend auf der Homepage (folgt später).
+// Dann data-endpoint am Formular setzen; bis dahin Testmodus.
 // Versandweg über Attribute am Formular:
 //   data-endpoint="https://…"  → POST (JSON) an einen Formular-Dienst; Erfolg nur bei HTTP 2xx
 //   data-mail="name@domain"    → öffnet das E-Mail-Programm mit fertiger Nachricht

@@ -166,6 +166,8 @@ Ein freigegebenes Exposé kann später heruntergeladen werden. Der erste Kontakt
 
 ## Interessensmeldung und Bearbeitung
 
+**Entscheid 18.11.2026:** Die Kurzanfrage (ab Variante 05) wird per E-Mail zugestellt; dafür wird später ein eigenes Backend auf der Homepage eingerichtet. Bis dahin bleibt der Versand im Testmodus (Formular zeigt nur die fertige Nachricht). Offen: Empfängeradresse, Backend-Endpunkt, Datenschutzhinweis.
+
 Ein Formular mit zwei Schritten hält den Einstieg kurz und liefert trotzdem brauchbare Hinweise.
 
 **Schritt 1 – Vorhaben:** Gesuchte Nutzung (Geschäft/Ausstellung, Büro, Dienstleistung/Praxis, Sonstiges), ungefährer Flächenbedarf mit Option „noch offen“, Wunschzeitraum und ein kurzer Satz zum Vorhaben. Eine zuvor gewählte Einheit wird sichtbar übernommen.

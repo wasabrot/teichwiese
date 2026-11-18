@@ -79,5 +79,25 @@
     ],
     "date": "2026-11-18",
     "sequence": 5
+  },
+  {
+    "id": "06-gruen",
+    "title": "Grün gebaut",
+    "description": "Variante 05 mit überarbeitetem 3D-Modell: Garagenzeile, Dachterrasse, Gründach mit PV, Rankpflanzen, Lage am Kataster und geplante Zufahrt auf der Billa-Seite.",
+    "path": "variants/06-gruen/",
+    "image": "assets/images/modell-hero-v6.jpg",
+    "theme": "stage",
+    "version": "06",
+    "changes": [
+      "Garagenzeile „Gebäude 1G / 6,0 m“ hinter Bauteil 1+2 mit 8 m Zufahrt (Plan 22-029_001).",
+      "Lage des Modells an der Digitalen Katastralmappe (BEV) ausgerichtet.",
+      "Dachterrasse hinten Richtung Wald mit Beeten, Sitzplätzen, Schirmen und Personen.",
+      "Gründach: Sedum und Gräser auf der ganzen Dachfläche, PV-Module darüber; auch auf den Garagen.",
+      "Rankpflanzen (Akebie) an je drei Seilen vor der Fassade, auf die Fensterachsen abgestimmt.",
+      "Geplanter Westarm des Knotens: Zufahrt Billa und künftige Aufschließungsstraße.",
+      "Neuer Abschnitt „Grün gebaut“ mit Terrassen- und Dachansicht; Formularversand später per E-Mail-Backend."
+    ],
+    "date": "2026-11-18",
+    "sequence": 6
   }
 ]

@@ -62,8 +62,10 @@ Z0 = 366.0  # m ü. A. → Blender z = 0
 # pu entlang der B54, positiv Richtung SSW (Ortszentrum/Billa); pv von der B54 weg Richtung OSO.
 # Ursprung = Südwestecke an der B54 (Grenze zu Gst. 105, gegenüber der Nordkante Billa).
 # Bauteil 1+2 liegen damit im Süden (Ortsseite), Bauteil 3 und 4 im Norden.
-PLAN_ROT = math.radians(79.13 + 180.0)  # B54-Achse laut OSM: 79.13° (NNO) → pu zeigt nach SSW
-PLAN_T = (0.9, -169.1)  # 6 m östlich der Straßenachse, Passpunkte GIS-Luftbild ↔ Orthofoto
+# Lage an der Digitalen Katastralmappe (BEV, WMS DKM_GST) ausgerichtet: Grundstücksgrenze des Plans
+# per Chamfer-Fit auf die Katastergrenzen gelegt (Median-Abweichung ca. 3 cm).
+PLAN_ROT = math.radians(258.05)  # pu zeigt nach SSW (Ortszentrum), pv nach OSO
+PLAN_T = (1.48, -169.79)
 PX_PER_M = 5.673  # Übersicht M 1:1000, gerastert
 
 
@@ -615,6 +617,38 @@ def build_materials():
         t.link(tr.outputs[0], ms.inputs[2])
         t.link(ms.outputs[0], t.out.inputs[0])
     mat_simple("bark", srgb("#5b4a3b"), 0.9, bump=0.4, bump_scale=15)
+    # Gründach: Sedum-Teppich (grün, rötlich, gelbgrün gefleckt)
+    m, t = material("sedum", srgb("#6f8a3c"))
+    tc = t.n("ShaderNodeTexCoord")
+    n1 = t.n("ShaderNodeTexNoise", i_Scale=1.6, i_Detail=6.0, i_Roughness=0.65)
+    n2 = t.n("ShaderNodeTexNoise", i_Scale=55.0, i_Detail=3.0)
+    t.link(tc.outputs["Object"], n1.inputs["Vector"])
+    t.link(tc.outputs["Object"], n2.inputs["Vector"])
+    ramp = t.n("ShaderNodeValToRGB")
+    els = ramp.color_ramp.elements
+    els[0].position, els[0].color = 0.32, srgb("#8a4f35")
+    els[1].position, els[1].color = 0.72, srgb("#a7ad4c")
+    e = els.new(0.5)
+    e.color = srgb("#5f8434")
+    t.link(n1.outputs["Fac"], ramp.inputs[0])
+    mul = t.n("ShaderNodeMix", data_type="RGBA", blend_type="MULTIPLY", i_Factor=0.45)
+    t.link(ramp.outputs[0], mul.inputs[6])
+    t.link(n2.outputs["Color"], mul.inputs[7])
+    bsdf = t.bsdf(None, 0.9)
+    t.link(mul.outputs[2], bsdf.inputs["Base Color"])
+    bp = t.n("ShaderNodeBump", i_Strength=0.8, i_Distance=0.03)
+    t.link(n2.outputs["Fac"], bp.inputs["Height"])
+    t.link(bp.outputs["Normal"], bsdf.inputs["Normal"])
+    t.link(bsdf.outputs[0], t.out.inputs[0])
+    mat_simple("grass_tuft", srgb("#8a9a48"), 0.8)
+    mat_simple("leaf_vine", srgb("#2e5a22"), 0.6, bump=0.5, bump_scale=40)
+    mat_simple("akebia_bloom", srgb("#7a3a6e"), 0.5)
+    mat_simple("steel_cable", srgb("#b8bcc0"), 0.25, 0.95)
+    mat_simple("planter", srgb("#3a3d40"), 0.6, 0.3)
+    mat_simple("parasol", srgb("#f1ede4"), 0.8)
+    mat_simple("skin", srgb("#d2a386"), 0.6)
+    for i, c in enumerate(["#2b4a73", "#c9980a", "#8b2b2b", "#e8e4dc", "#3d5c3a", "#56595c", "#6b4b8a", "#d97a3a"]):
+        mat_simple(f"cloth_{i}", srgb(c), 0.8)
     mat_simple("apple", srgb("#b8371f"), 0.45)
 
     # Ausstattung
@@ -882,9 +916,51 @@ def build_roads(c, feats):
             ribbon(mk, P, 0.06, 0.18, 0, dash=(4.5, 9.0))
             ribbon(mk, P, 0.075, 0.18, 0, offset=w / 2 - 0.35)
             ribbon(mk, P, 0.075, 0.18, 0, offset=-(w / 2 - 0.35))
+    # Geplanter Westarm des Knotens gegenüber der Zufahrt (Lageplan 22-029_001, rot skizziert):
+    # Zufahrt Billa nach Süden in den Parkplatz, künftige Aufschließungsstraße nach Westen/Norden
+    for P, w in west_access_lines():
+        ribbon(mb, P, w / 2, 0.13, 1)
+        ribbon(mk, P, 0.06, 0.15, 0, offset=w / 2 - 0.3)
+        ribbon(mk, P, 0.06, 0.15, 0, offset=-(w / 2 - 0.3))
+        lines.append((P, w))
     mb.build("Strassen", [M("asphalt"), M("asphalt_road")], collection=c)
     mk.build("Strassen_Markierung", [M("marking")], collection=c)
     return lines
+
+
+def arc_plan(p0, heading, turn, radius, step=1.5):
+    """Bogen im Planrahmen ab p0, Richtung heading (rad), Drehwinkel turn (rad, + = gegen Uhrzeiger)."""
+    pts = []
+    n = max(2, int(abs(turn) * radius / step))
+    side = 1 if turn > 0 else -1
+    cx = p0[0] - side * radius * math.sin(heading)
+    cy = p0[1] + side * radius * math.cos(heading)
+    a0 = heading - side * math.pi / 2
+    for i in range(1, n + 1):
+        a = a0 + turn * i / n
+        pts.append((cx + radius * math.cos(a), cy + radius * math.sin(a)))
+    return pts
+
+
+def west_access_lines():
+    """Mittellinien (Welt) der geplanten Straßen westlich der B54 am Knoten; Lage nach Planskizze."""
+    uj = (ACCESS_PU[0] + ACCESS_PU[1]) / 2
+    out = []
+    # Trichter an der B54
+    out.append(([(uj, -5.5), (uj, -13.0)], 13.0))
+    # Aufschließungsstraße: ca. 30 m nach Westen, dann Bogen nach Norden (−pu)
+    a = [(uj, -5.5), (uj, -34.0)]
+    a += arc_plan(a[-1], -math.pi / 2, -math.pi / 2, 16.0)
+    a += [(a[-1][0] - 45.0, a[-1][1])]
+    out.append((a, 6.5))
+    # Zufahrt Billa: zweigt nach Süden (+pu) in den Parkplatz ab
+    b = [(uj + 2.5, -15.0)]
+    b += arc_plan(b[-1], -math.pi / 2, math.pi / 2 * 0.85, 10.0)
+    hx, hy = b[-1][0] - b[-2][0], b[-1][1] - b[-2][1]
+    L = math.hypot(hx, hy)
+    b += [(b[-1][0] + hx / L * 12.0, b[-1][1] + hy / L * 12.0)]
+    out.append((b, 6.0))
+    return [(np.array([plan_to_world(u, v) for u, v in pts]), w) for pts, w in out]
 
 
 # --------------------------------------------------------------------------------------
@@ -1103,7 +1179,7 @@ LAGER_DOORS = [(3.9, 3.4), (18.6, 3.4), (29.7, 3.4), (36.5, 3.0), (43.3, 3.4)]
 BUERO_DOORS = [9.4, 13.1]
 
 BMATS = ["plaster", "cladding", "glass", "frame", "timber", "roof", "gravel", "coping", "soffit", "door",
-         "concrete", "int_floor", "int_wall", "int_ceiling", "pv", "lamp_light"]
+         "concrete", "int_floor", "int_wall", "int_ceiling", "pv", "lamp_light", "sedum"]
 BI = {n: i for i, n in enumerate(BMATS)}
 
 
@@ -1292,7 +1368,9 @@ def build_bauteil(name, parent, loc, rot=0.0, mirror=False, end0=False, end1=Tru
         mb.box(x_og0 + 0.3, x_og1 - 0.3, min(yb, yw), max(yb, yw), 5.0, 5.02, BI["int_floor"], skip=("bottom",))
     # Dach, Attika, Abdeckung
     t = 0.3
-    mb.box(x_og0 + t, x_og1 - t, Y_OG0 + t, Y_OG1 - t, Z_ROOF - 0.3, Z_ROOF, BI["roof"], skip=("bottom",))
+    # Gründach: gesamte Dachfläche mit Sedum, PV-Module darüber aufgeständert
+    mb.box(x_og0 + t, x_og1 - t, Y_OG0 + t, Y_OG1 - t, Z_ROOF - 0.3, Z_ROOF, BI["roof"], top=BI["sedum"],
+           skip=("bottom",))
     for (xa, xb, ya, yb) in ((x_og0, x_og1, Y_OG0, Y_OG0 + t), (x_og0, x_og1, Y_OG1 - t, Y_OG1),
                              (x_og0, x_og0 + t, Y_OG0, Y_OG1), (x_og1 - t, x_og1, Y_OG0, Y_OG1)):
         mb.box(xa, xb, ya, yb, Z_ROOF, Z_PAR, BI["cladding"], top=BI["coping"], skip=("bottom",))
@@ -1337,6 +1415,246 @@ def build_bauteil(name, parent, loc, rot=0.0, mirror=False, end0=False, end1=Tru
         if not (CORE[0] - 1 < x < CORE[1] + 1):
             dusk_light(name + f"_Laden_{x:.0f}", collection, root, (x, 4.5, 4.1), "AREA", 260, 3.5, 3.5)
     return root, ob
+
+
+# --------------------------------------------------------------------------------------
+# Begrünung, Terrasse, Garagen (Feedback 18.11.2026, Plan 22-029_001)
+# --------------------------------------------------------------------------------------
+_ICO = None
+
+
+def ico_unit():
+    """Einheits-Ikosaeder (Subdiv 1) als (Vertices, Faces) für schnelle Kleinteile im MB."""
+    global _ICO
+    if _ICO is None:
+        bm = bmesh.new()
+        bmesh.ops.create_icosphere(bm, subdivisions=1, radius=1.0)
+        _ICO = ([tuple(v.co) for v in bm.verts], [tuple(v.index for v in f.verts) for f in bm.faces])
+        bm.free()
+    return _ICO
+
+
+def mb_blob(mb, ctr, r, mat, rnd, squash=(1.0, 1.0, 1.0), jitter=0.25):
+    V, F = ico_unit()
+    k = [1 + rnd.uniform(-jitter, jitter) for _ in V]
+    P = [(ctr[0] + v[0] * r * squash[0] * k[i], ctr[1] + v[1] * r * squash[1] * k[i],
+          ctr[2] + v[2] * r * squash[2] * k[i]) for i, v in enumerate(V)]
+    for f in F:
+        mb.face([P[i] for i in f], mat, uv=[(0, 0), (1, 0), (1, 1)])
+
+
+def make_tufts(c):
+    """Vorlagen für Dachbegrünung: Grasbüschel und Sedum-Polster (für Instanzierung)."""
+    obs = []
+    for k in range(3):
+        rnd = random.Random(70 + k)
+        mb = MB()
+        if k < 2:
+            for _ in range(14):
+                a = rnd.uniform(0, 6.283)
+                h = rnd.uniform(0.12, 0.28)
+                lean = rnd.uniform(0.02, 0.09)
+                x, y = math.cos(a) * 0.03, math.sin(a) * 0.03
+                tx, ty = x + math.cos(a) * lean, y + math.sin(a) * lean
+                w = 0.012
+                mb.face([(x - w * math.sin(a), y + w * math.cos(a), 0), (x + w * math.sin(a), y - w * math.cos(a), 0),
+                         (tx, ty, h)], 0, uv=[(0, 0), (1, 0), (0.5, 1)])
+        else:
+            for _ in range(5):
+                mb_blob(mb, (rnd.uniform(-0.08, 0.08), rnd.uniform(-0.08, 0.08), 0.02), 0.07, 1, rnd,
+                        squash=(1, 1, 0.45))
+        ob = mb.build(f"Dachbewuchs_{k}", [M("grass_tuft"), M("sedum")], collection=c)
+        obs.append(ob)
+    return obs
+
+
+def scatter_roof(name, parent, collection, tuft_coll, rects, z, density=2.2, seed=1):
+    rng = np.random.default_rng(seed)
+    pts = []
+    for x0, x1, y0, y1 in rects:
+        n = int(abs((x1 - x0) * (y1 - y0)) * density)
+        X = rng.uniform(x0, x1, n)
+        Y = rng.uniform(y0, y1, n)
+        pts.append(np.column_stack([X, Y, np.full(n, z)]))
+    P = np.concatenate(pts)
+    n = len(P)
+    ob = scatter(name, tuft_coll, P, rng.uniform(0, 6.283, n), rng.uniform(0.7, 1.4, n),
+                 rng.choice([0, 1, 2], n, p=[0.35, 0.25, 0.4]), collection)
+    ob.parent = parent
+    return ob
+
+
+TERR_MATS = ["timber", "planter", "glass", "coping", "leaf", "parasol", "anthracite", "wood_bench", "skin",
+             "sedum", "leaf_obst", "bark"] + [f"cloth_{i}" for i in range(8)]
+TI = {n: i for i, n in enumerate(TERR_MATS)}
+
+
+def person(mb, x, y, z, rnd, seated=False, face=0.0):
+    """Einfache Figur (sitzend oder stehend), Blickrichtung face (rad)."""
+    c, s = math.cos(face), math.sin(face)
+    rot = lambda dx, dy: (x + dx * c - dy * s, y + dx * s + dy * c)  # noqa: E731
+    cloth = TI[f"cloth_{rnd.randrange(8)}"]
+    legs = TI[f"cloth_{rnd.choice([0, 5, 3])}"]
+
+    def obox(cx, cy, w, d, z0, z1, mat):
+        pts = [rot(cx - w / 2, cy - d / 2), rot(cx + w / 2, cy - d / 2), rot(cx + w / 2, cy + d / 2),
+               rot(cx - w / 2, cy + d / 2)]
+        for i in range(4):
+            a, b = pts[i], pts[(i + 1) % 4]
+            mb.face([(a[0], a[1], z0), (b[0], b[1], z0), (b[0], b[1], z1), (a[0], a[1], z1)], mat)
+        mb.face([(p[0], p[1], z1) for p in pts], mat)
+
+    if seated:
+        obox(0.0, 0.18, 0.34, 0.42, z + 0.45, z + 0.6, legs)       # Oberschenkel
+        obox(0.0, 0.38, 0.30, 0.12, z, z + 0.48, legs)             # Unterschenkel
+        obox(0.0, -0.02, 0.40, 0.24, z + 0.6, z + 1.15, cloth)     # Oberkörper
+        hz = z + 1.28
+    else:
+        obox(0.0, 0.0, 0.32, 0.2, z, z + 0.86, legs)
+        obox(0.0, 0.0, 0.42, 0.25, z + 0.86, z + 1.45, cloth)
+        hz = z + 1.58
+    mb_blob(mb, (x, y, hz), 0.11, TI["skin"], rnd, jitter=0.03)
+
+
+def build_terrace(name, root, collection, end0, rnd):
+    """Dachterrasse auf dem eingeschossigen Teil hinten (Richtung Wald): Deck, Beete, Geländer, Möbel, Personen."""
+    mb = MB()
+    z = Z_OGF
+    y0, y1 = Y_OG1 + 0.05, D_EG - 0.3
+    xa, xb = 0.35, L_EG - 0.35
+    mb.box(xa, xb, y0, y1 - 1.0, z, z + 0.08, TI["timber"])
+    # Pflanzbeet entlang der Brüstung mit Stauden und Gräsern
+    mb.box(xa, xb, y1 - 1.0, y1, z, z + 0.5, TI["planter"], top=TI["sedum"])
+    x = xa + 0.4
+    while x < xb - 0.3:
+        mb_blob(mb, (x, y1 - 0.5, z + 0.62), rnd.uniform(0.28, 0.42), TI["leaf"], rnd, squash=(1.2, 1.0, 0.8))
+        x += rnd.uniform(0.5, 0.9)
+    # Glasgeländer auf der Brüstung (Brüstung bis 0,6 m, Geländer bis 1,1 m über Deck)
+    for gy in (D_EG - 0.12,):
+        mb.box(0.0, L_EG, gy - 0.01, gy + 0.01, z + 0.6, z + 1.1, TI["glass"])
+        mb.box(0.0, L_EG, gy - 0.03, gy + 0.03, z + 1.1, z + 1.14, TI["coping"])
+    # Tischgruppen mit Schirmen und Personen; dazwischen Pflanzkübel mit kleinen Bäumen
+    groups = [3.5, 10.5, 17.5, 29.0, 36.0, 43.5]
+    for i, gx in enumerate(groups):
+        ty = (y0 + y1 - 1.0) / 2 + rnd.uniform(-0.3, 0.3)
+        mb.box(gx - 0.45, gx + 0.45, ty - 0.45, ty + 0.45, z + 0.72, z + 0.76, TI["wood_bench"])
+        mb.box(gx - 0.04, gx + 0.04, ty - 0.04, ty + 0.04, z + 0.08, z + 0.72, TI["anthracite"])
+        seats = [(gx - 0.85, ty, -math.pi / 2), (gx + 0.85, ty, math.pi / 2), (gx, ty - 0.85, 0.0),
+                 (gx, ty + 0.85, math.pi)]
+        for k, (cx, cy, f) in enumerate(seats):
+            mb.box(cx - 0.22, cx + 0.22, cy - 0.22, cy + 0.22, z + 0.42, z + 0.46, TI["anthracite"])
+            for dx in (-0.18, 0.18):
+                for dy in (-0.18, 0.18):
+                    mb.box(cx + dx - 0.015, cx + dx + 0.015, cy + dy - 0.015, cy + dy + 0.015, z + 0.08, z + 0.42,
+                           TI["anthracite"])
+            if rnd.random() < (0.6 if i % 2 == 0 else 0.4):
+                # Figur sitzt mit Blick zum Tisch
+                fx, fy = gx - cx, ty - cy
+                person(mb, cx, cy, z + 0.08, rnd, seated=True, face=math.atan2(-fx, fy))
+        if i % 2 == 0:
+            mb.box(gx - 0.03, gx + 0.03, ty - 0.03, ty + 0.03, z + 0.76, z + 2.4, TI["coping"])
+            mb_blob(mb, (gx, ty, z + 2.35), 1.4, TI["parasol"], rnd, squash=(1, 1, 0.18), jitter=0.0)
+        # Pflanzkübel mit Bäumchen zwischen den Gruppen
+        px = gx + 3.5
+        if px < xb - 1.0 and not (CORE[0] - 1.0 < px < CORE[1] + 1.0):
+            py = y0 + 0.7
+            mb.box(px - 0.45, px + 0.45, py - 0.45, py + 0.45, z + 0.08, z + 0.75, TI["planter"], top=TI["sedum"])
+            mb.box(px - 0.04, px + 0.04, py - 0.04, py + 0.04, z + 0.75, z + 1.7, TI["bark"])
+            mb_blob(mb, (px, py, z + 2.15), 0.65, TI["leaf_obst"], rnd, jitter=0.3)
+    # einige stehende Personen an der Brüstung
+    for gx in (7.0, 24.0, 40.0):
+        if rnd.random() < 0.8:
+            person(mb, gx + rnd.uniform(-1, 1), y1 - 1.4, z + 0.08, rnd, face=rnd.uniform(-0.4, 0.4))
+    return mb.build(name + "_Terrasse", [M(n) for n in TERR_MATS], parent=root, collection=collection)
+
+
+def facade_pier_positions(end0):
+    """x-Positionen der fensterfreien Fassadenfelder vorne (zwischen den OG-Fensterbändern)."""
+    x_og0 = -2.0 if end0 else 0.0
+    bays = list(OG_BAYS)
+    if end0:
+        bays = [(x_og0 + 0.35, 0.15 + 5.55)] + bays[1:]
+    xs = []
+    edges = [x_og0 + 0.4] + [v for a, b in bays for v in (a + 0.55, b - 0.55)] + [L_OG - 0.4]
+    # Lücken zwischen Fensterbändern: Mitte, Holzlamellen am Stiegenhaus aussparen
+    for i in range(0, len(edges) - 1, 2):
+        g0, g1 = edges[i], edges[i + 1]
+        if CORE[0] - 0.6 < (g0 + g1) / 2 < CORE[1] + 0.6:
+            continue
+        w = g1 - g0
+        if w > 4.5:  # fensterfreie Wand: alle 3–4 m
+            n = int(w // 3.5)
+            xs += [g0 + w * (j + 0.5) / n for j in range(n)]
+        elif w > 0.4:
+            xs.append((g0 + g1) / 2)
+    return xs
+
+
+VINE_MATS = ["steel_cable", "planter", "leaf_vine", "akebia_bloom", "sedum"]
+
+
+def build_vines(name, root, collection, end0, rnd):
+    """Rankpflanzen (Akebie) an je 3 Seilen vor der Fassade, auf die Fensterachsen abgestimmt."""
+    mb = MB()
+    yc = Y_OG0 - 0.16
+    for x in facade_pier_positions(end0):
+        mb.box(x - 0.42, x + 0.42, yc - 0.3, yc + 0.22, 0.0, 0.45, 1, top=4)  # Pflanztrog
+        for dx in (-0.22, 0.0, 0.22):
+            cx = x + dx
+            mb.box(cx - 0.006, cx + 0.006, yc - 0.006, yc + 0.006, 0.45, Z_PAR - 0.15, 0)
+            top = rnd.uniform(0.55, 0.95) * (Z_PAR - 0.6)
+            zz = 0.5
+            while zz < top:
+                r = rnd.uniform(0.09, 0.17) * (1.0 - 0.35 * zz / Z_PAR)
+                mb_blob(mb, (cx + rnd.uniform(-0.1, 0.1), yc - rnd.uniform(0.0, 0.1), zz), r, 2, rnd,
+                        squash=(1.2, 0.6, 1.0), jitter=0.35)
+                if rnd.random() < 0.06:
+                    mb_blob(mb, (cx + rnd.uniform(-0.12, 0.12), yc - 0.14, zz), 0.035, 3, rnd, jitter=0.1)
+                zz += rnd.uniform(0.13, 0.2)
+    return mb.build(name + "_Rankpflanzen", [M(n) for n in VINE_MATS], parent=root, collection=collection)
+
+
+def build_bauteil_gruen(name, root, collection, end0, tuft_coll, seed):
+    rnd = random.Random(seed)
+    build_terrace(name, root, collection, end0, rnd)
+    build_vines(name, root, collection, end0, rnd)
+    x_og0 = -2.0 if end0 else 0.0
+    scatter_roof(name + "_Dachbewuchs", root, collection, tuft_coll,
+                 [(x_og0 + 0.4, L_OG - 0.4, Y_OG0 + 0.4, Y_OG1 - 0.4)], Z_ROOF, seed=seed)
+
+
+# Garagen (Gebäude 1G / 6,0 m laut Plan 22-029_001): hinter Bauteil 1+2, 8 m Zufahrt, 8 m Tiefe
+GAR_PU = (-108.6, -22.9)
+GAR_ANNEX = (-118.9, -108.6)
+GAR_PV = (PV_BACK + 8.0, PV_BACK + 16.0)
+GAR_H = 6.0
+
+
+def build_garagen(plan, c, tuft_coll):
+    mb = MB()
+    z0 = LEVEL_A + 0.15
+    v0, v1 = GAR_PV
+    for (u0, u1), depth in ((GAR_PU, v1 - v0), (GAR_ANNEX, 5.0)):
+        mb.box(u0, u1, v0, v0 + depth, z0, z0 + GAR_H - 0.3, BI["plaster"], skip=("top",))
+        mb.box(u0 + 0.3, u1 - 0.3, v0 + 0.3, v0 + depth - 0.3, z0 + GAR_H - 0.6, z0 + GAR_H - 0.3, BI["roof"],
+               top=BI["sedum"], skip=("bottom",))
+        for (a, b, ya, yb) in ((u0, u1, v0, v0 + 0.3), (u0, u1, v0 + depth - 0.3, v0 + depth),
+                               (u0, u0 + 0.3, v0, v0 + depth), (u1 - 0.3, u1, v0, v0 + depth)):
+            mb.box(a, b, ya, yb, z0 + GAR_H - 0.3, z0 + GAR_H, BI["cladding"], top=BI["coping"])
+        # dunkles Band über den Toren
+        mb.box(u0, u1, v0 - 0.05, v0, z0 + 4.6, z0 + GAR_H - 0.3, BI["cladding"])
+        n = max(1, round((u1 - u0) / 5.05))
+        pitch = (u1 - u0) / n
+        for i in range(n):
+            xc = u0 + pitch * (i + 0.5)
+            mb.box(xc - 1.8, xc + 1.8, v0 - 0.06, v0, z0, z0 + 4.3, BI["door"])
+            mb.box(xc - 1.88, xc + 1.88, v0 - 0.08, v0, z0 + 4.3, z0 + 4.38, BI["frame"])
+        if depth > 6:
+            pv_field(mb, u0 + 1.0, u1 - 1.0, v0 + 1.0, v0 + depth - 1.0, z0 + GAR_H - 0.3)
+    ob = mb.build("Garagen_1G", [M(n) for n in BMATS], parent=plan, collection=c)
+    scatter_roof("Garagen_Dachbewuchs", plan, c, tuft_coll,
+                 [(GAR_PU[0] + 0.4, GAR_PU[1] - 0.4, v0 + 0.4, v1 - 0.4)], z0 + GAR_H - 0.3, seed=99)
+    return ob
 
 
 # --------------------------------------------------------------------------------------
@@ -1425,6 +1743,9 @@ def build_site(plan, c, tree_objs):
     S.append(plate("Gehweg", rect(u_s, u_n - 4.0, PV_WALK, PV_FRONT + 0.4), 0.0, M("pavers"), plan, c,
                    height=0.14, side_mat=M("kerb")))
     S.append(plate("Hof_hinten", rect(u_s, u_n - 4.0, PV_BACK, PV_YARD), 0.04, M("asphalt"), plan, c))
+    # Zufahrt vor den Garagen (8 m)
+    S.append(plate("Hof_Garagen", rect(GAR_ANNEX[0] - 0.6, u_n - 4.0, PV_YARD - 0.2, GAR_PV[0] + 0.05), 0.04,
+                   M("asphalt"), plan, c))
     S.append(plate("Umfahrt_Sued", rect(-19.5, -12.5, PV_WALK, PV_YARD), 0.042, M("asphalt"), plan, c))
     S.append(plate("Durchfahrt_BT3_BT4", rect(-201.5, -194.0, PV_WALK, PV_YARD), 0.042, M("asphalt"), plan, c))
     # Platz zwischen Bauteil 2 und 3 (Treffpunkt, Vorschlag)
@@ -1461,7 +1782,7 @@ def build_site(plan, c, tree_objs):
         u += 12.5
     for pu in np.arange(-252, -12, 9.5):
         b = site_boundary_pv(pu)
-        if b and b - 3.2 > PV_YARD + 1.0:
+        if b and b - 3.2 > PV_YARD + 1.0 and not (GAR_ANNEX[0] - 3 < pu < GAR_PU[1] + 3):
             trees.append(("laub" if random.random() < 0.55 else "strasse", pu + random.uniform(-1, 1), b - 3.2))
     for du, dv in ((-131.5, 27.0), (-127.0, 31.5), (-131.5, 36.5), (-127.0, 22.0)):
         trees.append(("obst", du, dv))
@@ -1483,7 +1804,7 @@ def build_site(plan, c, tree_objs):
     hb = MB()
     for pu in np.arange(-250, -14, 4.0):
         b0, b1 = site_boundary_pv(pu), site_boundary_pv(pu + 4.0)
-        if b0 and b1 and min(b0, b1) - 1.2 > PV_YARD:
+        if b0 and b1 and min(b0, b1) - 1.2 > PV_YARD and not (GAR_ANNEX[0] - 4 < pu < GAR_PU[1] + 1):
             z = float(zl(pu))
             hb.box(pu, pu + 4.02, min(b0, b1) - 1.6, min(b0, b1) - 0.6, z, z + 1.5, 0)
     ob = hb.build("Hecke", [M("leaf")], parent=plan, collection=c)
@@ -1885,6 +2206,10 @@ SHOT_DEFS = {
     "hero": (P3(-3, 0.5, 3.0), P3(-42, 20, 15.0), 22, 2560, 1440, "hero"),
     # Hof hinter Bauteil 1: Lagertore an der Rückseite
     "lager": (P3(-19.0, 49.5, 1.9), P3(-52.0, 45.2, 2.6), 24, 1800, 1350, "day"),
+    # Dachterrasse hinten (Richtung Wald) von der Garagenzufahrt aus, leicht erhöht
+    "terrasse": (P3(-36.0, 51.0, 9.5), P3(-60.0, 40.0, 5.6), 24, 2000, 1250, "day"),
+    # Gründach mit PV und Sedum, flacher Blick über Bauteil 1+2
+    "dach": (P3(-12.0, 4.0, 24.0), P3(-62.0, 32.0, 8.5), 28, 2000, 1250, "day"),
     # Lagekontrolle: senkrecht von oben, Norden oben (Gebäude östlich = rechts der B54)
     "draufsicht": ((24.0, -46.0, 620.0), (24.0, -40.0, 0.0), 50, 1600, 1600, "day"),
 }
@@ -2112,11 +2437,15 @@ def main():
 
     plan = empty("Planrahmen_Entwurf3", None, (*PLAN_T, 0), PLAN_ROT, collection=c_site)
     ffb_a, ffb_b = LEVEL_A + 0.15, LEVEL_B + 0.15
-    build_bauteil("Bauteil_1", plan, (-70.9, PV_FRONT, ffb_a), collection=c_site)
-    build_bauteil("Bauteil_2", plan, (-70.9, PV_FRONT, ffb_a), mirror=True, collection=c_site)
-    build_bauteil("Bauteil_3", plan, (-189.8, PV_FRONT, ffb_b), end0=True, collection=c_site)
-    build_bauteil("Bauteil_4", plan, (-254.7, 15.7, ffb_b), rot=math.radians(3.03), end0=True,
-                  collection=c_site)
+    tufts = coll("Dachbewuchs", c_src)
+    make_tufts(tufts)
+    for i, (nm, loc, kw) in enumerate((("Bauteil_1", (-70.9, PV_FRONT, ffb_a), {}),
+                                       ("Bauteil_2", (-70.9, PV_FRONT, ffb_a), {"mirror": True}),
+                                       ("Bauteil_3", (-189.8, PV_FRONT, ffb_b), {"end0": True}),
+                                       ("Bauteil_4", (-254.7, 15.7, ffb_b), {"end0": True, "rot": math.radians(3.03)}))):
+        root, _ = build_bauteil(nm, plan, loc, collection=c_site, **kw)
+        build_bauteil_gruen(nm, root, c_site, kw.get("end0", False), tufts, seed=200 + i)
+    build_garagen(plan, c_site, tufts)
     build_site(plan, c_site, tree_objs)
     build_cars(plan, c_site, c_src)
     build_pylon("Stele_Sued", plan, c_site, -30.5, 1.0, math.pi / 2)  # nördlich neben der Zufahrt, quer zur B54
