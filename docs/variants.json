@@ -101,5 +101,24 @@
     ],
     "date": "2026-11-18",
     "sequence": 6
+  },
+  {
+    "id": "07-plan",
+    "title": "Am Plan ausgerichtet",
+    "description": "Variante 06 mit Außenanlagen und Gebäudelängen nach Plan 22-029_001: Knick der Front, Stellplatzreihen, Zufahrt an der Südecke – plus Gaudi-Bild von der Dachterrasse.",
+    "path": "variants/07-plan/",
+    "image": "assets/images/modell-hero-v7.jpg",
+    "theme": "stage",
+    "version": "07",
+    "changes": [
+      "Nördliches Gebäude 55 m, mittleres 45 m lang (Plan 22-029_001); das nördliche folgt dem Knick der Front.",
+      "Fahrgasse, Stellplätze, Gehweg und Hof knicken zwischen mittlerem und nördlichem Gebäude wie im Plan.",
+      "Stellplatzreihen nach Plan: 7, 9 und 12 PKW zwischen den Gebäuden, 28 und 9 PKW hinten, 6 und 10 PKW im Süden.",
+      "Zufahrt an die Südecke verlegt (Bogen in die Ringstraße), Durchfahrten zwischen den Gebäuden wie im Plan; Platz mit Bänken entfällt.",
+      "Grundriss des Modells mit dem Plan überlagert und abgeglichen.",
+      "Gaudi-Bild: ungewöhnliche Gäste auf der Dachterrasse."
+    ],
+    "date": "2026-11-18",
+    "sequence": 7
   }
 ]

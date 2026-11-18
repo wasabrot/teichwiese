@@ -85,7 +85,16 @@ SITE = np.array([plan_px(u, v) for u, v in [
 # Höhen (relativ zu Z0, aus DGM am Standort): Bauteile 1+2 im Süden auf Ebene A (Urgelände ca. -1,3),
 # Bauteile 3+4 im Norden auf Ebene B (Urgelände ca. -0,4), Rampe in der Lücke dazwischen
 LEVEL_A, LEVEL_B = -1.0, -0.2
-RAMP = (-140.0, -118.0)
+RAMP = (-136.5, -119.5)
+
+# Knick der Grundstücksfront zwischen mittlerem und nördlichem Gebäude (Plan 22-029_001, Kataster):
+# nördlich davon knicken Fahrgasse, Stellplätze, Gehweg und Hof um ca. 3° (Scherung in pv).
+PU_KINK = -189.0
+KINK_A = math.radians(3.03)
+
+
+def bend_v(u, v):
+    return v + min(0.0, u - PU_KINK) * math.tan(KINK_A)
 RAMP_CUTS = [RAMP[0] + i * 2.0 for i in range(12)]
 
 
@@ -113,8 +122,9 @@ FRONT_PU = (-251.0, -14.0)
 # Einzige Zufahrt: 4. Knotenarm gegenüber der geplanten Aufschließung West (nördlich Billa),
 # danach Nebenfahrbahn parallel zur B54 (Verkehrsgutachten Fruhmann 12/2023). Lage aus dem
 # Übersichtslageplan abgegriffen (ca. 17 m nördlich der Grenze zu Gst. 105), nicht vermessen.
-ACCESS_PU = (-21.0, -13.0)
-PARK_END = ACCESS_PU[0] - 6.5  # Stellplätze enden vor der Ausrundung
+ACCESS_PU = (-9.0, -1.0)  # nach Plan 22-029_001: an der Südecke, Bogen in die Ringstraße
+PARK_END = -21.0  # Stellplätze vorne enden vor der Ringstraße
+EXTRA_SLOTS: list = []  # weitere Stellplätze (u, v, Drehung) aus build_site für build_cars
 
 # --------------------------------------------------------------------------------------
 # Hilfsfunktionen
@@ -655,6 +665,12 @@ def build_materials():
     mat_simple("armor_black", srgb("#141414"), 0.35, 0.8)
     mat_simple("hat_red", srgb("#c0262b"), 0.6)
     mat_emissive("ember", srgb("#ff6a1a"), srgb("#5a1a08"), 3.0, 8.0, 0.4)
+    mat_simple("leather", srgb("#121212"), 0.32, 0.0, Coat_Weight=0.6, Coat_Roughness=0.2)
+    mat_simple("chrome", srgb("#d8dadc"), 0.12, 1.0)
+    mat_simple("robe", srgb("#efe8da"), 0.85)
+    mat_simple("hair_brown", srgb("#4a3020"), 0.7)
+    mat_emissive("halo", srgb("#ffd76a"), srgb("#e2b84a"), 2.5, 6.0, 0.3)
+    mat_emissive("ghost", srgb("#f4f8ff"), srgb("#f2f4f8"), 0.35, 2.0, 0.6)
     for i, c in enumerate(["#2b4a73", "#c9980a", "#8b2b2b", "#e8e4dc", "#3d5c3a", "#56595c", "#6b4b8a", "#d97a3a"]):
         mat_simple(f"cloth_{i}", srgb(c), 0.8)
     mat_simple("apple", srgb("#b8371f"), 0.45)
@@ -1251,8 +1267,9 @@ def pv_field(mb, x0, x1, y0, y1, z):
         y += 2 * dy + 0.45
 
 
-def build_bauteil(name, parent, loc, rot=0.0, mirror=False, end0=False, end1=True, collection=None):
-    root = empty(name, parent, loc, rot, (-1 if mirror else 1, 1, 1), collection)
+def build_bauteil(name, parent, loc, rot=0.0, mirror=False, end0=False, end1=True, collection=None, sx=1.0):
+    """sx: Längsstreckung für abweichende Gebäudelängen (Plan 22-029_001: 45 m und 55 m statt 48 m)."""
+    root = empty(name, parent, loc, rot, ((-1 if mirror else 1) * sx, 1, 1), collection)
     mb = MB()
     # --- Erdgeschoss: Schaufenster (Ostseite zur B54) ---
     zg0, zg1 = 0.02, 4.3
@@ -1747,55 +1764,88 @@ def build_knoten(c, feats):
 
 
 def build_schmaeh(root, collection):
-    """Drei Spaßfiguren auf der Terrasse von Bauteil 1: Bodybuilder, dunkler Herrscher, Holzpuppe."""
-    mats = ["skin_tan", "armor_black", "puppet_wood", "hat_red", "ember", "cloth_0", "anthracite", "cloth_5"]
+    """Spaßfiguren auf der Terrasse von Bauteil 1 (nur mit --schmaeh): Biker mit Motorrad und Schrotflinte,
+    dunkler Herrscher, Holzpuppe, Figur im Gewand mit Heiligenschein, Geist."""
+    mats = ["skin_tan", "armor_black", "puppet_wood", "hat_red", "ember", "cloth_0", "anthracite", "cloth_5",
+            "leather", "chrome", "tyre", "robe", "hair_brown", "halo", "ghost", "wood_bench"]
     K = {n: i for i, n in enumerate(mats)}
     mb = MB()
     z = Z_OGF + 0.08
     y = D_EG - 2.2
     rnd = random.Random(5)
-    # 1) Bodybuilder in Doppelbizeps-Pose, Blick zur Kamera (−x/+y)
-    x = 13.0
-    mb.box(x - 0.2, x - 0.04, y - 0.12, y + 0.12, z, z + 0.9, K["skin_tan"])
-    mb.box(x + 0.04, x + 0.2, y - 0.12, y + 0.12, z, z + 0.9, K["skin_tan"])
-    mb.box(x - 0.24, x + 0.24, y - 0.15, y + 0.15, z + 0.75, z + 1.0, K["cloth_0"])       # Shorts
-    mb.box(x - 0.22, x + 0.22, y - 0.16, y + 0.16, z + 1.0, z + 1.25, K["skin_tan"])      # Taille
-    mb.box(x - 0.36, x + 0.36, y - 0.2, y + 0.2, z + 1.25, z + 1.72, K["skin_tan"])       # breite Brust
-    for sx in (-1, 1):
-        mb.box(x + sx * 0.36, x + sx * 0.78, y - 0.1, y + 0.1, z + 1.55, z + 1.72, K["skin_tan"])    # Oberarm
-        mb_blob(mb, (x + sx * 0.58, y, z + 1.76), 0.12, K["skin_tan"], rnd, jitter=0.05)          # Bizeps
-        mb.box(x + sx * 0.7, x + sx * 0.84, y - 0.08, y + 0.08, z + 1.72, z + 2.08, K["skin_tan"])   # Unterarm
-        mb_blob(mb, (x + sx * 0.77, y, z + 2.12), 0.08, K["skin_tan"], rnd, jitter=0.03)          # Faust
-    mb.box(x - 0.07, x + 0.07, y - 0.07, y + 0.07, z + 1.72, z + 1.82, K["skin_tan"])
-    mb_blob(mb, (x, y, z + 1.94), 0.13, K["skin_tan"], rnd, squash=(1.0, 1.0, 1.1), jitter=0.02)
-    mb.box(x - 0.12, x + 0.12, y + 0.1, y + 0.15, z + 1.95, z + 2.0, K["anthracite"])       # Sonnenbrille
+    box = mb.box
+
+    def disc(cx, cy, cz, r, w, mat, seg=18, axis="y"):
+        """Zylinder (Rad) mit Achse entlang y."""
+        for i in range(seg):
+            a0, a1 = 2 * math.pi * i / seg, 2 * math.pi * (i + 1) / seg
+            p0 = (cx + r * math.cos(a0), cz + r * math.sin(a0))
+            p1 = (cx + r * math.cos(a1), cz + r * math.sin(a1))
+            mb.face([(p0[0], cy - w / 2, p0[1]), (p1[0], cy - w / 2, p1[1]), (p1[0], cy + w / 2, p1[1]),
+                     (p0[0], cy + w / 2, p0[1])], mat)
+            for yy in (cy - w / 2, cy + w / 2):
+                mb.face([(cx, yy, cz), (p0[0], yy, p0[1]), (p1[0], yy, p1[1])], mat, uv=[(0, 0), (1, 0), (0, 1)])
+
+    # 1) Biker: Sonnenbrille, Lederjacke, Schrotflinte, daneben das Motorrad
+    x = 12.6
+    box(x - 0.2, x - 0.04, y - 0.12, y + 0.12, z, z + 0.92, K["anthracite"])        # Beine (dunkle Hose)
+    box(x + 0.04, x + 0.2, y - 0.12, y + 0.12, z, z + 0.92, K["anthracite"])
+    box(x - 0.22, x - 0.02, y - 0.16, y + 0.14, z, z + 0.12, K["leather"])           # Stiefel
+    box(x + 0.02, x + 0.22, y - 0.16, y + 0.14, z, z + 0.12, K["leather"])
+    box(x - 0.34, x + 0.34, y - 0.19, y + 0.19, z + 0.92, z + 1.7, K["leather"])     # Lederjacke, breit
+    box(x - 0.16, x + 0.16, y + 0.19, y + 0.2, z + 1.25, z + 1.68, K["anthracite"])  # Shirt im Ausschnitt
+    box(x - 0.48, x - 0.34, y - 0.1, y + 0.1, z + 1.0, z + 1.66, K["leather"])       # linker Arm hängend
+    box(x + 0.34, x + 0.48, y - 0.1, y + 0.32, z + 1.36, z + 1.66, K["leather"])     # rechter Arm angewinkelt
+    box(x + 0.34, x + 0.48, y + 0.2, y + 0.34, z + 1.36, z + 1.95, K["leather"])
+    box(x - 0.07, x + 0.07, y - 0.07, y + 0.07, z + 1.7, z + 1.8, K["skin_tan"])
+    mb_blob(mb, (x, y, z + 1.93), 0.13, K["skin_tan"], rnd, squash=(1.0, 1.0, 1.1), jitter=0.02)
+    box(x - 0.1, x + 0.1, y - 0.09, y + 0.09, z + 2.0, z + 2.07, K["hair_brown"])    # kurzer Bürstenschnitt
+    box(x - 0.13, x + 0.13, y + 0.1, y + 0.15, z + 1.94, z + 2.0, K["anthracite"])   # Sonnenbrille
+    # Schrotflinte über der Schulter, Lauf nach oben
+    box(x + 0.39, x + 0.43, y + 0.25, y + 0.29, z + 1.8, z + 2.55, K["anthracite"])
+    box(x + 0.37, x + 0.45, y + 0.23, y + 0.31, z + 1.55, z + 1.85, K["wood_bench"])
+    # Motorrad (längs x), rechts neben dem Biker
+    mx, my = 14.9, y + 0.1
+    disc(mx - 0.75, my, z + 0.34, 0.34, 0.14, K["tyre"])
+    disc(mx + 0.75, my, z + 0.34, 0.34, 0.14, K["tyre"])
+    disc(mx - 0.75, my, z + 0.34, 0.2, 0.15, K["chrome"])
+    disc(mx + 0.75, my, z + 0.34, 0.2, 0.15, K["chrome"])
+    box(mx - 0.45, mx + 0.35, my - 0.12, my + 0.12, z + 0.35, z + 0.62, K["chrome"])     # Motor
+    box(mx - 0.1, mx + 0.45, my - 0.15, my + 0.15, z + 0.66, z + 0.86, K["leather"])     # Tank
+    box(mx - 0.7, mx - 0.1, my - 0.13, my + 0.13, z + 0.66, z + 0.76, K["leather"])      # Sitzbank
+    box(mx - 0.85, mx - 0.45, my - 0.04, my + 0.04, z + 0.5, z + 0.7, K["chrome"])       # Heck
+    box(mx + 0.45, mx + 0.78, my - 0.03, my + 0.03, z + 0.34, z + 0.95, K["chrome"])     # Gabel
+    box(mx + 0.62, mx + 0.68, my - 0.38, my + 0.38, z + 1.0, z + 1.04, K["chrome"])      # Lenker
+    box(mx + 0.78, mx + 0.88, my - 0.08, my + 0.08, z + 0.82, z + 0.95, K["ember"])      # Scheinwerfer
+    box(mx - 0.6, mx + 0.2, my + 0.13, my + 0.18, z + 0.28, z + 0.34, K["chrome"])       # Auspuff
     # 2) Dunkler Herrscher: 2,6 m, Rüstung, Stachelkrone, glühende Augenschlitze, Streitkolben
     x = 9.0
-    mb.box(x - 0.28, x + 0.28, y - 0.2, y + 0.2, z, z + 1.3, K["armor_black"])
-    mb.box(x - 0.45, x + 0.45, y - 0.26, y + 0.26, z + 1.3, z + 2.15, K["armor_black"])
+    box(x - 0.28, x + 0.28, y - 0.2, y + 0.2, z, z + 1.3, K["armor_black"])
+    box(x - 0.45, x + 0.45, y - 0.26, y + 0.26, z + 1.3, z + 2.15, K["armor_black"])
     for sx in (-1, 1):
-        mb.box(x + sx * 0.45, x + sx * 0.62, y - 0.12, y + 0.12, z + 1.2, z + 2.1, K["armor_black"])
+        box(x + sx * 0.45, x + sx * 0.62, y - 0.12, y + 0.12, z + 1.2, z + 2.1, K["armor_black"])
         mb_blob(mb, (x + sx * 0.55, y, z + 2.15), 0.2, K["armor_black"], rnd, squash=(1.2, 1, 0.7), jitter=0.0)
-    mb.box(x - 0.17, x + 0.17, y - 0.17, y + 0.17, z + 2.15, z + 2.5, K["armor_black"])
-    mb.box(x - 0.11, x + 0.11, y + 0.17, y + 0.18, z + 2.33, z + 2.36, K["ember"])
+    box(x - 0.17, x + 0.17, y - 0.17, y + 0.17, z + 2.15, z + 2.5, K["armor_black"])
+    box(x - 0.11, x + 0.11, y + 0.17, y + 0.18, z + 2.33, z + 2.36, K["ember"])
     for i in range(7):
         a = i / 7 * 2 * math.pi
         cx, cy = x + math.cos(a) * 0.15, y + math.sin(a) * 0.15
         w = 0.05
         mb.face([(cx - w * math.sin(a), cy + w * math.cos(a), z + 2.5), (cx + w * math.sin(a), cy - w * math.cos(a), z + 2.5),
-                 (cx + math.cos(a) * 0.05, cy + math.sin(a) * 0.05, z + 2.85)], K["armor_black"], uv=[(0, 0), (1, 0), (.5, 1)])
-    mb.box(x + 0.6, x + 0.66, y - 0.03, y + 0.03, z + 0.2, z + 1.7, K["armor_black"])
+                 (cx + math.cos(a) * 0.05, cy + math.sin(a) * 0.05, z + 2.85)], K["armor_black"],
+                uv=[(0, 0), (1, 0), (.5, 1)])
+    box(x + 0.6, x + 0.66, y - 0.03, y + 0.03, z + 0.2, z + 1.7, K["armor_black"])
     mb_blob(mb, (x + 0.63, y, z + 1.75), 0.14, K["armor_black"], rnd, jitter=0.4)
     # 3) Holzpuppe mit langer Nase und Zipfelmütze
-    x = 16.5
+    x = 10.9
     for sx in (-1, 1):
-        mb.box(x + sx * 0.1 - 0.05, x + sx * 0.1 + 0.05, y - 0.05, y + 0.05, z, z + 0.55, K["puppet_wood"])
-        mb.box(x + sx * 0.3 - 0.04, x + sx * 0.3 + 0.04, y - 0.04, y + 0.04, z + 0.55, z + 0.95, K["puppet_wood"])
-    mb.box(x - 0.18, x + 0.18, y - 0.1, y + 0.1, z + 0.5, z + 0.68, K["hat_red"])            # Hose
-    mb.box(x - 0.17, x + 0.17, y - 0.1, y + 0.1, z + 0.68, z + 1.0, K["cloth_5"])            # Jacke
+        box(x + sx * 0.1 - 0.05, x + sx * 0.1 + 0.05, y - 0.05, y + 0.05, z, z + 0.55, K["puppet_wood"])
+        box(x + sx * 0.3 - 0.04, x + sx * 0.3 + 0.04, y - 0.04, y + 0.04, z + 0.55, z + 0.95, K["puppet_wood"])
+    box(x - 0.18, x + 0.18, y - 0.1, y + 0.1, z + 0.5, z + 0.68, K["hat_red"])
+    box(x - 0.17, x + 0.17, y - 0.1, y + 0.1, z + 0.68, z + 1.0, K["cloth_5"])
     mb_blob(mb, (x, y, z + 1.14), 0.12, K["puppet_wood"], rnd, jitter=0.02)
     tri = [(x - 0.025, y + 0.1, z + 1.12), (x + 0.025, y + 0.1, z + 1.12), (x, y + 0.1, z + 1.17)]
-    tip = (x, y + 0.62, z + 1.15)  # lange Nase, Richtung Kamera/Wald
+    tip = (x, y + 0.62, z + 1.15)  # lange Nase
     for (a0, a1) in ((0, 1), (1, 2), (2, 0)):
         mb.face([tri[a0], tri[a1], tip], K["puppet_wood"], uv=[(0, 0), (1, 0), (.5, 1)])
     for i in range(8):
@@ -1803,6 +1853,42 @@ def build_schmaeh(root, collection):
         mb.face([(x + math.cos(a) * 0.13, y + math.sin(a) * 0.13, z + 1.2),
                  (x + math.cos(b) * 0.13, y + math.sin(b) * 0.13, z + 1.2), (x + 0.08, y + 0.12, z + 1.62)],
                 K["hat_red"], uv=[(0, 0), (1, 0), (.5, 1)])
+    # 4) Figur im langen Gewand mit Schärpe, langem Haar, Bart und Heiligenschein, Arme einladend geöffnet
+    x = 17.4
+    for i in range(10):  # Gewand leicht ausgestellt
+        t0, t1 = i / 10, (i + 1) / 10
+        w0, w1 = 0.34 - 0.12 * t0, 0.34 - 0.12 * t1
+        box(x - w0, x + w0, y - 0.18, y + 0.18, z + 1.45 * t0, z + 1.45 * t1, K["robe"])
+    box(x - 0.24, x + 0.24, y - 0.17, y + 0.17, z + 1.45, z + 1.72, K["robe"])
+    for sx in (-1, 1):  # Schärpe und offene Arme
+        box(x + sx * 0.24, x + sx * 0.62, y - 0.08, y + 0.08, z + 1.42, z + 1.56, K["robe"])
+        mb_blob(mb, (x + sx * 0.66, y, z + 1.5), 0.06, K["skin_tan"], rnd, jitter=0.03)
+    box(x - 0.05, x + 0.24, y + 0.18, y + 0.19, z + 0.9, z + 1.7, K["hat_red"])
+    mb_blob(mb, (x, y, z + 1.86), 0.12, K["skin_tan"], rnd, jitter=0.02)
+    box(x - 0.14, x + 0.14, y - 0.14, y + 0.08, z + 1.6, z + 2.0, K["hair_brown"])      # langes Haar hinten
+    box(x - 0.08, x + 0.08, y + 0.08, y + 0.14, z + 1.72, z + 1.82, K["hair_brown"])     # Bart
+    for i in range(20):  # Heiligenschein (Ring)
+        a0, a1 = 2 * math.pi * i / 20, 2 * math.pi * (i + 1) / 20
+        r0, r1 = 0.17, 0.22
+        P = lambda r, a: (x + r * math.cos(a), y - 0.06, z + 2.0 + r * math.sin(a))  # noqa: E731
+        mb.face([P(r0, a0), P(r1, a0), P(r1, a1), P(r0, a1)], K["halo"])
+    # 5) Geist: weißes Laken, schwebend, leicht leuchtend
+    x, zg = 20.0, z + 0.35
+    for i in range(12):
+        t0, t1 = i / 12, (i + 1) / 12
+        r0 = 0.36 - 0.1 * t0 ** 2
+        r1 = 0.36 - 0.1 * t1 ** 2
+        for k in range(12):
+            a0, a1 = 2 * math.pi * k / 12, 2 * math.pi * (k + 1) / 12
+            wave = 0.06 * math.sin(3 * a0) if i == 0 else 0.0
+            mb.face([(x + r0 * math.cos(a0), y + r0 * math.sin(a0), zg + 1.3 * t0 + wave),
+                     (x + r0 * math.cos(a1), y + r0 * math.sin(a1), zg + 1.3 * t0 + (0.06 * math.sin(3 * a1) if i == 0 else 0)),
+                     (x + r1 * math.cos(a1), y + r1 * math.sin(a1), zg + 1.3 * t1),
+                     (x + r1 * math.cos(a0), y + r1 * math.sin(a0), zg + 1.3 * t1)], K["ghost"])
+    mb_blob(mb, (x, y, zg + 1.35), 0.27, K["ghost"], rnd, jitter=0.03)
+    for sx in (-1, 1):
+        box(x + sx * 0.1 - 0.04, x + sx * 0.1 + 0.04, y + 0.27, y + 0.29, zg + 1.36, zg + 1.46, K["anthracite"])
+    box(x - 0.05, x + 0.05, y + 0.29, y + 0.31, zg + 1.2, zg + 1.3, K["anthracite"])
     return mb.build("Terrasse_Gaudi", [M(n) for n in mats], parent=root, collection=collection)
 
 
@@ -1845,8 +1931,9 @@ def build_garagen(plan, c, tuft_coll):
 # --------------------------------------------------------------------------------------
 
 
-def plate(name, poly, z_off, mat, parent, collection, height=0.0, side_mat=None):
-    """Planfläche (pu, pv), folgt der Geländeebene zl(pu); optional mit Bordstein-Kante."""
+def plate(name, poly, z_off, mat, parent, collection, height=0.0, side_mat=None, bend=True):
+    """Planfläche (pu, pv), folgt der Geländeebene zl(pu); optional mit Bordstein-Kante.
+    bend: nördlich PU_KINK dem Knick der Grundstücksfront folgen."""
     poly = [tuple(p) for p in poly]
     area = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(poly, poly[1:] + poly[:1]))
     if area < 0:
@@ -1854,11 +1941,13 @@ def plate(name, poly, z_off, mat, parent, collection, height=0.0, side_mat=None)
     bm = bmesh.new()
     vs = [bm.verts.new((p[0], p[1], 0)) for p in poly]
     bm.faces.new(vs)
-    for cx in RAMP_CUTS:
+    for cx in RAMP_CUTS + ([PU_KINK] if bend else []):
         if min(p[0] for p in poly) < cx < max(p[0] for p in poly):
             geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
             bmesh.ops.bisect_plane(bm, geom=geom, plane_co=(cx, 0, 0), plane_no=(1, 0, 0))
     for v in bm.verts:
+        if bend:
+            v.co.y = bend_v(v.co.x, v.co.y)
         v.co.z = float(zl(v.co.x)) + z_off - (0.05 if height > 0 else 0.0)
     if height > 0:
         res = bmesh.ops.extrude_face_region(bm, geom=bm.faces[:])
@@ -1916,10 +2005,10 @@ def site_boundary_pv(pu):
 
 def build_site(plan, c, tree_objs):
     S = []
-    S.append(plate("Rasen_Grundstueck", [tuple(p) for p in SITE], 0.0, M("grass"), plan, c))
+    S.append(plate("Rasen_Grundstueck", [tuple(p) for p in SITE], 0.0, M("grass"), plan, c, bend=False))
     u_s, u_n = FRONT_PU
     S.append(plate("Parken_Rasengitter", rect(u_s, PARK_END, PV_PARK, PV_AISLE), 0.03, M("grasspavers"), plan, c))
-    aisle = rect(u_s - 7.0, u_n + 2.0, PV_AISLE, PV_WALK)
+    aisle = rect(u_s - 7.0, ACCESS_PU[1], PV_AISLE, PV_WALK)
     S.append(plate("Fahrgasse", aisle, 0.04, M("asphalt"), plan, c))
     S.append(plate("Zufahrt_Sued", fillet_access(*ACCESS_PU, -2.4, PV_AISLE + 0.5, r=9.0), 0.045, M("asphalt"),
                    plan, c))
@@ -1930,14 +2019,41 @@ def build_site(plan, c, tree_objs):
     S.append(plate("Hof_Garagen", rect(GAR_ANNEX[0] - 0.6, u_n - 4.0, PV_YARD - 0.2, GAR_PV[0] + 0.05), 0.04,
                    M("asphalt"), plan, c))
     S.append(plate("Umfahrt_Sued", rect(-19.5, -12.5, PV_WALK, PV_YARD), 0.042, M("asphalt"), plan, c))
-    S.append(plate("Durchfahrt_BT3_BT4", rect(-201.5, -194.0, PV_WALK, PV_YARD), 0.042, M("asphalt"), plan, c))
-    # Platz zwischen Bauteil 2 und 3 (Treffpunkt, Vorschlag)
-    S.append(plate("Platz", rect(-137.4, -121.3, PV_FRONT, PV_BACK), 0.0, M("pavers_plaza"), plan, c,
-                   height=0.12, side_mat=M("kerb")))
-    S.append(plate("Platz_Rasen", rect(-134.5, -124.2, 24.0, 40.0), 0.13, M("grass_dark"), plan, c,
-                   height=0.06, side_mat=M("kerb")))
-
+    # Durchfahrten zwischen den Gebäuden und Stellplatzreihen nach Plan 22-029_001
+    S.append(plate("Durchfahrt_Nord", rect(-189.0, -183.0, PV_WALK, PV_YARD), 0.042, M("asphalt"), plan, c))
+    S.append(plate("Durchfahrt_Mitte", rect(-126.6, -120.0, PV_WALK, PV_YARD), 0.042, M("asphalt"), plan, c))
     mk = MB()
+    EXTRA_SLOTS.clear()
+
+    def park_rows(name, u0, u1, v0, v1, along_u, fill, seed):
+        """Rasengitter-Stellplätze; along_u: Stellplätze nebeneinander entlang u (sonst entlang v)."""
+        S.append(plate(name, rect(u0, u1, v0, v1), 0.03, M("grasspavers"), plan, c))
+        rr = random.Random(seed)
+        n = int(round(((u1 - u0) if along_u else (v1 - v0)) / 2.5))
+        for k_ in range(n + 1):
+            if along_u:
+                uu = u0 + k_ * 2.5
+                zz = float(zl(uu)) + 0.04
+                mk.box(uu - 0.06, uu + 0.06, bend_v(uu, v0 + 0.3), bend_v(uu, v1 - 0.3), zz, zz + 0.01, 0)
+            else:
+                vv = v0 + k_ * 2.5
+                um = (u0 + u1) / 2
+                zz = float(zl(um)) + 0.04
+                mk.box(u0 + 0.3, u1 - 0.3, bend_v(um, vv) - 0.06, bend_v(um, vv) + 0.06, zz, zz + 0.01, 0)
+            if k_ < n and rr.random() < fill:
+                if along_u:
+                    EXTRA_SLOTS.append((u0 + (k_ + 0.5) * 2.5, (v0 + v1) / 2, math.pi / 2 + (math.pi if rr.random() < .5 else 0)))
+                else:
+                    EXTRA_SLOTS.append(((u0 + u1) / 2, v0 + (k_ + 0.5) * 2.5, 0.0 if rr.random() < .5 else math.pi))
+
+    park_rows("Parken_7", -199.8, -194.8, 22.2, 34.7, False, 0.5, 1)
+    park_rows("Parken_9", -194.1, -189.2, 19.6, 42.1, False, 0.5, 2)
+    park_rows("Parken_12", -131.8, -126.6, 22.4, 52.4, False, 0.5, 3)
+    park_rows("Parken_28", -207.4, -137.4, 50.2, 55.4, True, 0.45, 4)
+    park_rows("Parken_9_hinten", -258.8, -236.3, 50.2, 55.4, True, 0.4, 5)
+    park_rows("Parken_6_Sued", -11.5, -6.5, 21.0, 36.0, False, 0.6, 6)
+    park_rows("Parken_10_Sued", -4.5, 0.5, 22.0, 47.0, False, 0.5, 7)
+
     trees = []
     lamps = []
     stall = 2.5
@@ -1952,7 +2068,8 @@ def build_site(plan, c, tree_objs):
                 lamps.append((u + stall / 2, PV_AISLE - 0.6))
         else:
             z = float(zl(u)) + 0.04
-            mk.box(u - 0.06, u + 0.06, PV_PARK + 0.3, PV_AISLE - 0.1, z, z + 0.01, 0)
+            dv = bend_v(u, 0.0)
+            mk.box(u - 0.06, u + 0.06, PV_PARK + 0.3 + dv, PV_AISLE - 0.1 + dv, z, z + 0.01, 0)
         u += stall
         k += 1
     mk.build("Stellplatz_Markierung", [M("marking")], parent=plan, collection=c)
@@ -1965,11 +2082,12 @@ def build_site(plan, c, tree_objs):
         u += 12.5
     for pu in np.arange(-252, -12, 9.5):
         b = site_boundary_pv(pu)
-        if b and b - 3.2 > PV_YARD + 1.0 and not (GAR_ANNEX[0] - 3 < pu < GAR_PU[1] + 3):
+        if (b and b - 3.2 > PV_YARD + 1.0 and not (GAR_ANNEX[0] - 3 < pu < GAR_PU[1] + 3)
+                and not (-260 < pu < -235 or -209 < pu < -136)):
             trees.append(("laub" if random.random() < 0.55 else "strasse", pu + random.uniform(-1, 1), b - 3.2))
-    for du, dv in ((-131.5, 27.0), (-127.0, 31.5), (-131.5, 36.5), (-127.0, 22.0)):
+    for du, dv in ((-134.6, 26.0), (-134.6, 36.0), (-134.6, 46.0), (-5.5, 17.5), (-9.0, 40.5)):
         trees.append(("obst", du, dv))
-    for du, dv in ((-6.0, 20.0), (-2.0, 30.0), (-8.0, 40.0), (-232.0, 32.0)):
+    for du, dv in ((-232.0, 32.0),):
         trees.append(("obst", du, dv))
 
     tcoll = c
@@ -1978,7 +2096,8 @@ def build_site(plan, c, tree_objs):
         ob = bpy.data.objects.new(f"Baum_{kind}_{i:03d}", src.data)
         tcoll.objects.link(ob)
         ob.parent = plan
-        ob.location = (pu, pv, float(zl(pu)) + (0.15 if pv < PV_AISLE and pv > PV_PARK else 0.0))
+        pvb = bend_v(pu, pv) if pv < PV_FRONT else pv  # vordere Zone folgt dem Knick
+        ob.location = (pu, pvb, float(zl(pu)) + (0.15 if pv < PV_AISLE and pv > PV_PARK else 0.0))
         ob.rotation_euler = (0, 0, random.uniform(0, 6.283))
         s = random.uniform(0.85, 1.1)
         ob.scale = (s, s, s)
@@ -1987,7 +2106,8 @@ def build_site(plan, c, tree_objs):
     hb = MB()
     for pu in np.arange(-250, -14, 4.0):
         b0, b1 = site_boundary_pv(pu), site_boundary_pv(pu + 4.0)
-        if b0 and b1 and min(b0, b1) - 1.2 > PV_YARD and not (GAR_ANNEX[0] - 4 < pu < GAR_PU[1] + 1):
+        if (b0 and b1 and min(b0, b1) - 1.2 > PV_YARD and not (GAR_ANNEX[0] - 4 < pu < GAR_PU[1] + 1)
+                and not (-263 < pu < -235 or -211 < pu < -136)):
             z = float(zl(pu))
             hb.box(pu, pu + 4.02, min(b0, b1) - 1.6, min(b0, b1) - 0.6, z, z + 1.5, 0)
     ob = hb.build("Hecke", [M("leaf")], parent=plan, collection=c)
@@ -1995,17 +2115,13 @@ def build_site(plan, c, tree_objs):
 
     # Leuchten, Bänke, Fahrradständer
     fx = MB()
-    for pu, pv in lamps + [(-129.4, PV_FRONT + 1.0), (-200.0, PV_WALK + 0.6)]:
+    for pu, pv in lamps + [(-201.0, PV_WALK + 0.6)]:
+        pv = bend_v(pu, pv)
         z = float(zl(pu)) + 0.15
         fx.box(pu - 0.07, pu + 0.07, pv - 0.07, pv + 0.07, z, z + 6.0, 0)
         fx.box(pu - 0.15, pu + 0.15, pv - 0.9, pv + 0.15, z + 6.0, z + 6.12, 0)
         fx.box(pu - 0.12, pu + 0.12, pv - 0.85, pv - 0.1, z + 5.98, z + 6.0, 2)
         dusk_light(f"Leuchte_{pu:.0f}", c, plan, (pu, pv - 0.5, z + 5.9), "SPOT", 700, size=math.radians(130))
-    for pu, pv in ((-133.5, 25.0), (-133.5, 33.0), (-125.0, 29.0), (-125.0, 37.0)):
-        z = float(zl(pu)) + 0.12
-        fx.box(pu - 0.9, pu + 0.9, pv - 0.25, pv + 0.25, z + 0.42, z + 0.47, 1)
-        for d in (-0.75, 0.75):
-            fx.box(pu + d - 0.04, pu + d + 0.04, pv - 0.22, pv + 0.22, z, z + 0.42, 0)
     fx.build("Ausstattung", [M("anthracite"), M("wood_bench"), M("lamp_light")], parent=plan, collection=c)
     return S
 
@@ -2228,10 +2344,19 @@ def build_cars(plan, c, src_coll):
             ob = bpy.data.objects.new(f"Auto_{k:03d}", src.data)
             c.objects.link(ob)
             ob.parent = plan
-            ob.location = (u + 1.25, (PV_PARK + PV_AISLE) / 2 + rng.uniform(-0.15, 0.25) + 0.2, float(zl(u)) + 0.04)
-            ob.rotation_euler = (0, 0, math.pi / 2 + (math.pi if rng.random() < 0.3 else 0) + rng.uniform(-0.03, 0.03))
+            uc = u + 1.25
+            ob.location = (uc, bend_v(uc, (PV_PARK + PV_AISLE) / 2 + rng.uniform(-0.15, 0.25) + 0.2),
+                           float(zl(u)) + 0.04)
+            ob.rotation_euler = (0, 0, math.pi / 2 + (math.pi if rng.random() < 0.3 else 0) + rng.uniform(-0.03, 0.03)
+                                 + (KINK_A if uc < PU_KINK else 0.0))
         u += 2.5
         k += 1
+    for i, (uu, vv, rot) in enumerate(EXTRA_SLOTS):
+        ob = bpy.data.objects.new(f"Auto_P_{i:03d}", rng.choice(cars).data)
+        c.objects.link(ob)
+        ob.parent = plan
+        ob.location = (uu, bend_v(uu, vv), float(zl(uu)) + 0.04)
+        ob.rotation_euler = (0, 0, rot + (KINK_A if uu < PU_KINK else 0.0))
     # Fahrende Autos im Vordergrund der Hero-Ansicht: einer biegt von der B54 ein, einer fährt auf der Fahrgasse
     for i, (idx, pu, pv, rot) in enumerate(((5, -37.0, 10.4, math.pi), (2, -50.0, 9.4, 0.0))):
         ob = bpy.data.objects.new(f"Auto_fahrend_{i}", cars[idx].data)
@@ -2361,8 +2486,13 @@ def camera(name, loc, target, lens):
         cam = bpy.data.objects.new(name, bpy.data.cameras.new(name))
         bpy.context.scene.collection.objects.link(cam)
     cam.location = loc
-    look_at(cam, target)
-    cam.data.lens = lens
+    if lens < 0:  # orthogonal, an den Planachsen ausgerichtet; |lens| = Bildbreite in m
+        cam.rotation_euler = (0.0, 0.0, PLAN_ROT)
+        cam.data.type = "ORTHO"
+        cam.data.ortho_scale = -lens
+    else:
+        look_at(cam, target)
+        cam.data.lens = lens
     cam.data.sensor_width = 36
     cam.data.clip_start = 0.5
     cam.data.clip_end = 20000
@@ -2392,7 +2522,10 @@ SHOT_DEFS = {
     # Dachterrasse hinten (Richtung Wald) von der Garagenzufahrt aus, leicht erhöht
     "terrasse": (P3(-36.0, 51.0, 9.5), P3(-60.0, 40.0, 5.6), 24, 2000, 1250, "day"),
     # Nahaufnahme der Terrasse von Bauteil 1 (für die Gaudi-Figuren)
-    "terrasse-nah": (P3(-49.5, 46.0, 6.6), P3(-58.5, 42.0, 5.6), 30, 2000, 1250, "day"),
+    "terrasse-nah": (P3(-56.4, 52.0, 9.8), P3(-56.4, 42.4, 5.9), 24, 2000, 1250, "day"),
+    # Grundriss zum Planvergleich: orthogonal von oben, ausgerichtet wie der Plan (B54 unten, Süden rechts),
+    # 10 px/m, Ausschnitt pu −275…+25, pv −25…+75
+    "grundriss": (P3(-125.0, 25.0, 400.0), P3(-125.0, 25.0, 0.0), -300.0, 3000, 1000, "day"),
     # Gründach mit PV und Sedum, flacher Blick über Bauteil 1+2
     "dach": (P3(-12.0, 4.0, 24.0), P3(-62.0, 32.0, 8.5), 28, 2000, 1250, "day"),
     # Lagekontrolle: senkrecht von oben, Norden oben (Gebäude östlich = rechts der B54)
@@ -2626,8 +2759,11 @@ def main():
     make_tufts(tufts)
     for i, (nm, loc, kw) in enumerate((("Bauteil_1", (-70.9, PV_FRONT, ffb_a), {}),
                                        ("Bauteil_2", (-70.9, PV_FRONT, ffb_a), {"mirror": True}),
-                                       ("Bauteil_3", (-189.8, PV_FRONT, ffb_b), {"end0": True}),
-                                       ("Bauteil_4", (-254.7, 15.7, ffb_b), {"end0": True, "rot": math.radians(3.03)}))):
+                                       # Längen und Lage nach Plan 22-029_001: mittleres Gebäude 45 m,
+                                       # nördliches 55 m und dem Knick der Front folgend
+                                       ("Bauteil_3", (-182.4, PV_FRONT, ffb_b), {"end0": True, "sx": 45.0 / L_EG}),
+                                       ("Bauteil_4", (-258.3, bend_v(-258.3, PV_FRONT), ffb_b),
+                                        {"end0": True, "rot": KINK_A, "sx": 55.0 / L_EG}))):
         root, _ = build_bauteil(nm, plan, loc, collection=c_site, **kw)
         build_bauteil_gruen(nm, root, c_site, kw.get("end0", False), tufts, seed=200 + i)
         if SCHMAEH and nm == "Bauteil_1":
